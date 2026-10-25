@@ -50,6 +50,7 @@ hard-coded, cached from a mock, or presented as a live feed.
 | Database | PostgreSQL 14+ via Drizzle ORM; versioned SQL migrations |
 | Validation | Zod at every API boundary; strict query schemas |
 | Charts | Recharts (single-series lines) and plain HTML/SVG interval charts |
+| Maps | Own SVG map component (`src/components/map`); background map `public/basemap/south-asia.json` built from Natural Earth by `scripts/build-basemap.mjs` |
 | Parsing | Papa Parse |
 | Tests | Vitest (unit, integration), Playwright (desktop + mobile) |
 | Local run | `embedded-postgres` for a zero-install database |
@@ -72,7 +73,7 @@ src/
     connector-health/         Charger assessment, alerts and alert workflow
     learning/                 Training, cross-validation, prediction
     data-ingestion/           Parsing, detection, mapping, validation, transactional import
-  components/                 UI building blocks (driver, insights, charts, ui primitives)
+  components/                 UI building blocks (driver, company, map, insights, charts, ui primitives)
   lib/                        DB client, schema, security, HTTP helpers, validation
 database/
   migrations/                 Forward-only SQL (0000–0003)
@@ -90,7 +91,7 @@ tests/                        unit · integration · e2e
 | Pure functions for every calculation (`features/sessions`, `features/insights`, `features/recommendations`) | Unit-testable against independently computed numbers (pandas, SciPy) |
 | Rules over opaque scores for action items | Every item can cite the rule, the threshold and the records behind it |
 | Bonferroni-adjusted intervals when comparing stations | Testing 19 stations at 95 % would flag about one by chance |
-| No map provider | Requirement; distance is Haversine on stored coordinates, and no directions are claimed |
+| Self-contained map instead of a map provider | No tiles, API keys or network calls. Natural Earth is public domain, and its India point-of-view edition follows India's official boundaries. Only stations with recorded coordinates are pinned; no turn-by-turn directions are claimed |
 | Demo records flagged in the database, labelled “Demo” in the UI | Lets the workflow be shown without passing generated data off as real |
 | Workflow status separate from charger status | “Marked resolved” records a decision; it never claims a repair |
 

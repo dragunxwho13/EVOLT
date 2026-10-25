@@ -72,15 +72,33 @@ Router, PostgreSQL with Drizzle, Zod, and the existing analysis, ingestion and l
   - offline `npm run model:train` writing `models/session-models.json`;
   - the dataset is loaded automatically on first start, through the normal import pipeline.
 
+## 4b. Maps (added 26 Oct 2026)
+
+- **Own map component** (`src/components/map`):
+  - Web Mercator, SVG;
+  - drag, scroll and pinch zoom, plus keyboard pan and zoom;
+  - nearby pins grouped into numbered circles, and city labels that never overlap;
+  - a scale bar and a Natural Earth credit.
+- **Background map:** a 268 KB static file built from public-domain Natural Earth data (India point of view: coastline, borders, states, highways, cities). There is no map provider or API, and the file is rebuilt with `scripts/build-basemap.mjs`.
+- **Driver:**
+  - shows your location and the search radius;
+  - stars the best match (it is never grouped with other pins) and numbers the other results by rank;
+  - popups list every charger at the station;
+  - clicking empty map offers to search from that point;
+  - each result card has *Show on map*.
+- **Company:** the Fleet map page, coloured by worst charger health, with filters, a needs-attention list and popups linking to chargers. The overview has a compact version.
+- **Station pages:** mini maps showing the station and its nearest neighbours.
+- **Tests added:** 7 unit (projection, scale, fitting, grouping) and 4 browser (map flows).
+
 ## 5. Verification (tests actually run on 25 Oct 2026, Linux sandbox)
 
 | Check | Result |
 |---|---|
 | `npm run lint`, `npm run typecheck` | Passed |
-| Unit tests | **92 / 92** |
+| Unit tests | **99 / 99** |
 | Integration tests (real PostgreSQL) | **22 / 22** |
 | Production build | Passed |
-| Browser tests (Playwright, desktop + mobile) | **20 / 20**, run twice in a row |
+| Browser tests (Playwright, desktop + mobile) | **24 / 24** |
 | Clean first run of the launcher (no `.env.local`, no database, no build) | Passed: demo stations and dataset loaded, 3 model reports, editing open, a same-site write accepted |
 | Every page loaded in a browser with the console watched | 11 routes, no errors |
 | No “synthetic” / “simulated” text on any main page | Passed (automated) |

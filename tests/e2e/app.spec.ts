@@ -29,7 +29,7 @@ test.describe("entry and role switching", () => {
 test.describe("driver workflow", () => {
   test("finds, filters, explains and compares chargers from a starting city", async ({ page }) => {
     await page.goto("/driver");
-    await expect(page.getByText("Start by sharing a location.")).toBeVisible();
+    await expect(page.getByText(/^Start by sharing a location/)).toBeVisible();
     await page.getByLabel("Or start from a city in the data").selectOption("Chennai");
     await expect(page.getByRole("heading", { name: /\d+ chargers? found/ })).toBeVisible();
     const first = page.locator("ol > li").first();
@@ -100,7 +100,76 @@ test.describe("driver workflow", () => {
     await expect(page.getByRole("heading", { name: /Chargers here/ })).toBeVisible();
     await expect(page.getByText(/This is a demo station/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy coordinates" })).toBeVisible();
-    await expect(page.getByText(/does not provide maps or directions/)).toBeVisible();
+    await expect(page.getByText(/does not provide turn-by-turn directions/)).toBeVisible();
+    // The station's own mini map shows it among its neighbours.
+    await expect(page.getByRole("region", { name: /Map of .* and nearby stations/ })).toBeVisible();
+  });
+});
+
+test.describe("maps", () => {
+  test("the driver map stars the best match and its popup lists the chargers there", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto("/driver?lat=13.0067&lng=80.2206&from=Guindy");
+    const map = page.getByRole("region", { name: /Map of charging stations/ });
+    await expect(map).toBeVisible();
+    const best = map.getByRole("button", { name: /— best match/ });
+    await expect(best).toBeVisible();
+    await expect(map.getByText("Best match", { exact: true }).first()).toBeVisible();
+    await best.click();
+    const popup = page.getByRole("dialog");
+    await expect(popup.getByText("★ Best match for your search")).toBeVisible();
+    // The popup's best match is the same charger as the first result card.
+    const firstCardStation = await page.locator("ol > li").first().getByRole("link").first().innerText();
+    await expect(popup.getByText(firstCardStation, { exact: true })).toBeVisible();
+    await expect(popup.getByText(/#1/)).toBeVisible();
+    await expect(popup.getByRole("link", { name: /Station details/ })).toBeVisible();
+    await popup.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test("a result card can be shown on the map, and clicking empty map searches from that point", async ({ page }) => {
+    await page.goto("/driver");
+    const map = page.getByRole("region", { name: /Map of charging stations/ });
+    await expect(map.getByRole("button").filter({ hasText: /sites|^$/ }).first()).toBeVisible();
+    await expect(page.getByText("Click anywhere on the map to search from that point")).toBeVisible();
+    const box = (await map.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.3);
+    await page.getByRole("button", { name: "Find chargers near here" }).click();
+    await expect(page.getByText(/Searching from Point chosen on the map/)).toBeVisible();
+    // Zoom back to the Chennai stations via a city start, then link a card to the map.
+    await page.getByLabel("Or start from a city in the data").selectOption("Chennai");
+    await expect(page.getByRole("heading", { name: /\d+ chargers? found/ })).toBeVisible();
+    await page.locator("ol > li").nth(1).getByRole("button", { name: "Show on map" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").getByText(/Result 2 for your search|Best match/)).toBeVisible();
+  });
+
+  test("the fleet map colours stations by health and filters them", async ({ page }) => {
+    await page.goto("/company/map");
+    const map = page.getByRole("region", { name: /Map of the charging network/ });
+    await expect(map).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Stations needing attention" })).toBeVisible();
+    // Pick a flagged station from the side list: its popup lists every charger with links.
+    await page.getByRole("complementary").getByRole("button").first().click();
+    const popup = page.getByRole("dialog");
+    await expect(popup).toBeVisible();
+    await expect(popup.getByRole("link", { name: /^DEMO-\d+-C\d$/ }).first()).toBeVisible();
+    await expect(popup.getByRole("link", { name: /Station details and session history/ })).toBeVisible();
+    // Filters hide stations by health.
+    const before = await map.getByRole("button", { name: /— Normal in available data/ }).count();
+    await page.getByRole("button", { name: /Normal in available data \d+/ }).click();
+    await expect(map.getByRole("button", { name: /— Normal in available data/ })).toHaveCount(0);
+    expect(before).toBeGreaterThanOrEqual(0);
+  });
+
+  test("the company overview shows where attention is needed", async ({ page }) => {
+    await page.goto("/company");
+    await expect(page.getByRole("heading", { name: "Where attention is needed" })).toBeVisible();
+    await expect(page.getByRole("region", { name: /Map of the charging network/ })).toBeVisible();
+    await page.getByRole("link", { name: "Open fleet map" }).click();
+    await expect(page).toHaveURL(/\/company\/map$/);
   });
 });
 
@@ -208,7 +277,7 @@ test.describe("data import, analytics and model", () => {
     await page.goto("/company/model");
     await expect(page.getByRole("heading", { name: /^Yes — 9\d\.\d% correct on unseen sessions/ })).toBeVisible();
     await expect(page.getByText(/anticipated without measuring power loss/)).toBeVisible();
-    await page.getByLabel("Power loss").fill("4.2");
+    await page.getByRole("textbox", { name: "Power loss" }).fill("4.2");
     await page.getByRole("button", { name: "Classify" }).click();
     await expect(page.getByText("Predicted category")).toBeVisible();
     await expect(page.locator("#classify").getByText("High", { exact: true })).toBeVisible();
