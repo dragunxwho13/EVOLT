@@ -39,7 +39,7 @@ export const viewport: Viewport = {
 function PrototypeNote() {
   return (
     <p className="text-xs leading-relaxed text-faint">
-      Research prototype. Health categories describe available evidence only and are not safety certifications.
+      Public discovery for drivers. Operator diagnostics live in the operations workspace.
     </p>
   );
 }

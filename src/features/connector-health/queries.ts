@@ -8,6 +8,7 @@ import type { AlertQuery, ChargerQuery } from "@/lib/validation/schemas";
 export async function listChargers(q: ChargerQuery) {
   const db = getDb();
   const filters: SQL[] = [];
+  filters.push(eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false));
   if (q.connector) filters.push(eq(chargers.connectorType, q.connector));
   if (q.health) filters.push(eq(chargers.healthStatus, q.health));
   if (q.availability) filters.push(eq(chargers.operationalStatus, q.availability));
@@ -54,7 +55,7 @@ export async function getChargerDetail(id: string, observationLimit = 500) {
     .select({ charger: chargers, station: stations })
     .from(chargers)
     .innerJoin(stations, eq(stations.id, chargers.stationId))
-    .where(eq(chargers.id, id));
+    .where(and(eq(chargers.id, id), eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false)));
   if (!row) throw notFound("Charger");
   const [observations, chargerAlerts, sensors, total] = await Promise.all([
     db
@@ -88,7 +89,11 @@ export async function getChargerDetail(id: string, observationLimit = 500) {
 
 export async function listObservations(chargerId: string, limit: number) {
   const db = getDb();
-  const [exists] = await db.select({ id: chargers.id }).from(chargers).where(eq(chargers.id, chargerId));
+  const [exists] = await db
+    .select({ id: chargers.id })
+    .from(chargers)
+    .innerJoin(stations, eq(stations.id, chargers.stationId))
+    .where(and(eq(chargers.id, chargerId), eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false)));
   if (!exists) throw notFound("Charger");
   return db
     .select()
@@ -101,6 +106,7 @@ export async function listObservations(chargerId: string, limit: number) {
 export async function listAlerts(q: AlertQuery) {
   const db = getDb();
   const filters: SQL[] = [];
+  filters.push(eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false));
   const status = q.status ?? "active";
   if (status === "active") filters.push(inArray(alerts.status, ["open", "acknowledged"]));
   else if (status !== "all") filters.push(eq(alerts.status, status));
@@ -133,7 +139,7 @@ export async function getAlertDetail(id: string) {
     .from(alerts)
     .innerJoin(chargers, eq(chargers.id, alerts.chargerId))
     .innerJoin(stations, eq(stations.id, chargers.stationId))
-    .where(eq(alerts.id, id));
+    .where(and(eq(alerts.id, id), eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false)));
   if (!row) throw notFound("Alert");
   const events = await db.select().from(alertEvents).where(eq(alertEvents.alertId, id)).orderBy(asc(alertEvents.createdAt));
   return { ...row, events };

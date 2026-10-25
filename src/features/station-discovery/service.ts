@@ -108,9 +108,12 @@ export async function listStations(q: StationQuery): Promise<StationListResult> 
     .select()
     .from(stations)
     .where(
-      text
-        ? or(ilike(stations.name, text), ilike(stations.code, text), ilike(stations.city, text), ilike(stations.address, text), ilike(stations.operator, text))
-        : undefined,
+      and(
+        q.includeSynthetic ? undefined : eq(stations.isSynthetic, false),
+        text
+          ? or(ilike(stations.name, text), ilike(stations.code, text), ilike(stations.city, text), ilike(stations.address, text), ilike(stations.operator, text))
+          : undefined,
+      ),
     )
     .orderBy(asc(stations.name))
     .limit(MAX_SCAN);
@@ -179,9 +182,12 @@ export interface StationDetail {
   chargers: (Charger & { activeAlerts: number })[];
 }
 
-export async function getStation(id: string): Promise<StationDetail> {
+export async function getStation(id: string, options: { includeSynthetic?: boolean } = {}): Promise<StationDetail> {
   const db = getDb();
-  const [station] = await db.select().from(stations).where(eq(stations.id, id));
+  const [station] = await db
+    .select()
+    .from(stations)
+    .where(and(eq(stations.id, id), options.includeSynthetic ? undefined : eq(stations.isSynthetic, false)));
   if (!station) throw notFound("Station");
   const rows = await db.select().from(chargers).where(eq(chargers.stationId, id)).orderBy(asc(chargers.code));
   const alertCounts = rows.length
