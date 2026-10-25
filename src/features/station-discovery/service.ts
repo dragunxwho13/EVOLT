@@ -110,12 +110,9 @@ export async function listStations(q: StationQuery): Promise<StationListResult> 
     .select()
     .from(stations)
     .where(
-      and(
-        eq(stations.isSynthetic, false),
-        text
-          ? or(ilike(stations.name, text), ilike(stations.code, text), ilike(stations.city, text), ilike(stations.address, text), ilike(stations.operator, text))
-          : undefined,
-      ),
+      text
+        ? or(ilike(stations.name, text), ilike(stations.code, text), ilike(stations.city, text), ilike(stations.address, text), ilike(stations.operator, text))
+        : undefined,
     )
     .orderBy(asc(stations.name))
     .limit(MAX_SCAN);
@@ -155,7 +152,7 @@ export async function listStations(q: StationQuery): Promise<StationListResult> 
 
   let items: StationListItem[] = [];
   for (const s of stationRows) {
-    const all = enrichedChargerRows.filter((c) => c.stationId === s.id);
+    const all = byStation.get(s.id) ?? [];
     const matching = all.filter((c) => chargerMatches(c, q));
     if (hasChargerFilter && matching.length === 0) continue;
     const hasCoords = isValidLatLng(s.latitude, s.longitude);
@@ -189,7 +186,7 @@ export async function getStation(id: string): Promise<StationDetail> {
   const [station] = await db
     .select()
     .from(stations)
-    .where(and(eq(stations.id, id), eq(stations.isSynthetic, false)));
+    .where(eq(stations.id, id));
   if (!station) throw notFound("Station");
   const rows = await db.select().from(chargers).where(eq(chargers.stationId, id)).orderBy(asc(chargers.code));
   const alertCounts = rows.length

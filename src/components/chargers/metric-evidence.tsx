@@ -13,13 +13,16 @@ export function MetricEvidence({ assessment, series }: { assessment: MetricAsses
   const threshold = b ? deviationThreshold(b.median, b.scale, def.minScale, ANALYSIS_PARAMS) : null;
   const canChart = assessment.metric === "fault_count" ? series.length >= ANALYSIS_PARAMS.minBaselinePoints : b !== null;
   const window = assessment.findings[0] ? { start: assessment.findings[0].windowStart, end: assessment.findings[0].windowEnd } : null;
-  const interpretation = assessment.findings[0]?.explanation
-    ? assessment.findings[0].explanation
-    : assessment.latest && b
-      ? assessment.latest.value > b.median
-        ? `${def.label} is currently above this charger's usual starting level. The chart shows whether that difference is persistent or part of a broader trend.`
-        : `${def.label} is currently at or below this charger's usual starting level. No concerning pattern was identified in the available readings.`
-      : "There is not enough history to explain this metric confidently yet.";
+  // Plain-language reading of what the analysis concluded (never a fresh judgement of its own).
+  const interpretation =
+    assessment.findings.length > 0
+      ? `The analysis found ${assessment.findings.length === 1 ? "one pattern" : `${assessment.findings.length} patterns`} in this metric — see below for the evidence and what to check.`
+      : assessment.status === "insufficient_data" || !b
+        ? "There are too few valid readings to judge this metric yet."
+        : assessment.latest && threshold !== null && assessment.latest.value > threshold
+          ? assessment.notes.find((n) => /baseline/i.test(n)) ??
+            "The latest reading is above the deviation threshold, but not in enough recent readings to count as persistent."
+          : `Readings stay within this charger's own normal range: no persistent deviation, sustained rise or fault pattern was found.`;
 
   return (
     <article className="rounded-lg border border-line bg-surface">

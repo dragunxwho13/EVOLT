@@ -1,5 +1,7 @@
 # Deploying EVOLT to Vercel
 
+[← Back to README](../README.md)
+
 EVOLT is a standard Next.js 16 application. It needs one PostgreSQL database and two
 secrets. The build never touches the database, so builds succeed without credentials.
 
@@ -30,14 +32,15 @@ DATABASE_URL="postgresql://…" npm run db:migrate
 
 They are deliberately **not** run during `next build`: a build should never alter a database.
 
-## 3. (Optional) Load the synthetic demonstration data
+## 3. (Optional) Load the demo stations and the supplied dataset
 
 ```bash
-DATABASE_URL="postgresql://…" npm run db:seed
+DATABASE_URL="postgresql://…" npm run db:seed           # 12 labelled demo stations
+DATABASE_URL="postgresql://…" npm run db:seed:dataset   # the session dataset + model training
 ```
 
-The seed only creates records flagged as synthetic and refuses to overwrite non-synthetic
-records with the same codes. `npm run db:seed:reset` removes synthetic records first. Do not
+The demo seed only creates records flagged as demo records and refuses to overwrite other
+records with the same codes. `npm run db:seed:reset` removes demo records first. Do not
 seed a production database that holds real data unless you want the demo records mixed in —
 they are clearly labelled but still visible.
 
@@ -63,11 +66,9 @@ git push -u origin main
    | Name | Production | Preview | Notes |
    |---|---|---|---|
    | `DATABASE_URL` | prod DB URL | preview DB URL | required |
-   | `EVOLT_EDIT_MODE` | `token` | `token` | **keep `token` on deployments**; `open` is honored only with `EVOLT_LOCAL_DB=true` |
+   | `EVOLT_EDIT_MODE` | `token` | `token` | **set `token` on any public deployment** (unset also means token unless `EVOLT_LOCAL_DB=true`) |
    | `EVOLT_ADMIN_TOKEN` | long random string | different random string | required in token mode; ≥ 16 chars |
    | `EVOLT_MAX_UPLOAD_BYTES` | optional | optional | default 2 MiB, max 4 MiB |
-   | `NEXT_PUBLIC_MAP_TILE_URL` | optional | optional | tile provider for production traffic |
-   | `NEXT_PUBLIC_MAP_ATTRIBUTION` | optional | optional | required attribution for that provider |
 
    Generate a token with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 4. Deploy. Every push to `main` deploys production; every other branch/PR gets a preview.
@@ -80,16 +81,10 @@ Functions) to keep query latency low.
 1. `GET https://<your-app>/api/health` → `{"status":"ok","database":"ok","writesEnabled":true,"editMode":"token"}`.
    `database: "not_migrated"` means step 2 was skipped; `"unreachable"` means the URL or
    network access is wrong; `"not_configured"` means `DATABASE_URL` is missing.
-2. Open `/dashboard` — figures should match your data (or the synthetic seed).
-3. Open `/settings`, unlock editing with the admin token, then on `/data` click the
-   "EV grid sessions" example and import it; `/model` should show the trained results.
+2. Open `/` and both experiences: `/driver` and `/company`.
+3. Open `/company/settings`, unlock editing with the admin token, then on `/company/data` click
+   the "EV grid sessions" example and import it; `/company/model` should show the results.
 4. Open a charger with history and confirm the evidence charts render.
-
-## Map tiles
-
-The default tile URL points at OpenStreetMap's community tile servers, which are suitable for
-light, non-commercial use only (see their tile usage policy). For sustained traffic, configure
-a commercial or self-hosted provider with `NEXT_PUBLIC_MAP_TILE_URL` and its attribution.
 
 ## Operational notes
 

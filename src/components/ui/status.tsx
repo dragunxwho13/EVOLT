@@ -1,8 +1,11 @@
 import {
+  DRIVER_AVAILABILITY_LABELS,
+  DRIVER_HEALTH_LABELS,
   HEALTH_LABELS,
   HEALTH_SHORT_LABELS,
   OPERATIONAL_LABELS,
   PROVENANCE_DESCRIPTIONS,
+  PROVENANCE_LABELS,
   type AlertSeverity,
   type AlertStatus,
   type HealthStatus,
@@ -61,8 +64,20 @@ export function HealthGlyph({ status, className }: { status: HealthStatus; class
   }
 }
 
-export function HealthBadge({ status, short = false, className }: { status: HealthStatus; short?: boolean; className?: string }) {
+export function HealthBadge({
+  status,
+  short = false,
+  driver = false,
+  className,
+}: {
+  status: HealthStatus;
+  short?: boolean;
+  /** Use the driver-facing wording. */
+  driver?: boolean;
+  className?: string;
+}) {
   const s = HEALTH_STYLE[status];
+  const label = driver ? DRIVER_HEALTH_LABELS[status] : short ? HEALTH_SHORT_LABELS[status] : HEALTH_LABELS[status];
   return (
     <span
       className={cn(
@@ -74,7 +89,7 @@ export function HealthBadge({ status, short = false, className }: { status: Heal
       title={HEALTH_LABELS[status]}
     >
       <HealthGlyph status={status} />
-      <span className="text-ink/90 dark:text-ink">{short ? HEALTH_SHORT_LABELS[status] : HEALTH_LABELS[status]}</span>
+      <span className="text-ink/90 dark:text-ink">{label}</span>
     </span>
   );
 }
@@ -90,7 +105,7 @@ const OP_DOT: Record<OperationalStatus, string> = {
   unknown: "bg-faint",
 };
 
-export function OperationalBadge({ status }: { status: OperationalStatus }) {
+export function OperationalBadge({ status, driver = false }: { status: OperationalStatus; driver?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-[0.8125rem] whitespace-nowrap text-muted">
       <span
@@ -101,7 +116,7 @@ export function OperationalBadge({ status }: { status: OperationalStatus }) {
           status === "offline" ? "rotate-45 rounded-[1px]" : status === "unknown" ? "rounded-full opacity-60" : "rounded-full",
         )}
       />
-      {OPERATIONAL_LABELS[status]}
+      {driver ? DRIVER_AVAILABILITY_LABELS[status] : OPERATIONAL_LABELS[status]}
     </span>
   );
 }
@@ -137,18 +152,19 @@ export function ProvenanceTag({ provenance }: { provenance: Provenance }) {
       )}
       title={PROVENANCE_DESCRIPTIONS[provenance]}
     >
-      {provenance === "simulated" ? "Generated" : provenance}
+      {PROVENANCE_LABELS[provenance]}
     </span>
   );
 }
 
-export function SyntheticTag() {
+/** Marks the bundled demo records. They are examples, not real charging sites. */
+export function DemoTag() {
   return (
     <span
       className="inline-flex items-center rounded border border-dashed border-watch/60 px-1.5 py-px text-xs text-watch"
-      title="Development record — not live operational data"
+      title="Demo record included to show the workflow — not a real charging site or live data"
     >
-      Development
+      Demo
     </span>
   );
 }

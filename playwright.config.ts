@@ -11,7 +11,7 @@ if (!E2E_DATABASE_URL) {
 
 /**
  * End-to-end tests run against a production build (`npm run build` first) backed by
- * a disposable database that global-setup wipes, migrates and seeds with synthetic data.
+ * a disposable database that global-setup wipes, migrates and seeds with demo data.
  */
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -35,7 +35,7 @@ export default defineConfig({
   webServer: {
     command: `npx next start -p ${PORT}`,
     // The web server starts before global-setup migrates the database, so wait on a static page.
-    url: `http://localhost:${PORT}/stations`,
+    url: `http://localhost:${PORT}/icon.svg`,
     reuseExistingServer: false,
     timeout: 60_000,
     env: {

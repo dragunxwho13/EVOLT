@@ -1,14 +1,14 @@
 /**
- * Deterministic SYNTHETIC demonstration data. Every station, charger and observation
- * produced here is fictional: names say "Synthetic", records are flagged
- * is_synthetic = true and observations carry provenance = "simulated".
- * Coordinates are placed near Chennai and Vellore only so the map has something to
- * show — they do not correspond to real charging stations.
+ * Deterministic demonstration data. Every station, charger and observation produced here
+ * is fictional: names say "Demo Site", codes start with "DEMO-", records are flagged
+ * is_synthetic = true and observations carry provenance = "simulated" (shown in the UI as
+ * "Demo data"). Coordinates are placed near Chennai and Vellore only so distance-based
+ * discovery can be demonstrated — they do not correspond to real charging stations.
  */
 import type { ConnectorType, MetricKey, OperationalStatus } from "../../src/config/domain";
 import { gaussian, seededRandom } from "../../src/features/anomaly-detection/stats";
 
-export const SYNTHETIC_SOURCE = "EVOLT synthetic generator v1";
+export const SYNTHETIC_SOURCE = "EVOLT demo generator v1";
 
 export interface SyntheticStation {
   code: string;
@@ -68,27 +68,27 @@ const AREAS: [string, string, number, number][] = [
 
 export function syntheticStations(): SyntheticStation[] {
   const list: SyntheticStation[] = AREAS.map(([area, city, lat, lng], i) => ({
-    code: `SYN-${String(i + 1).padStart(2, "0")}`,
-    name: `Synthetic Site ${String.fromCharCode(65 + i)} — ${area}`,
-    address: "Synthetic demonstration location — not a real charging station",
+    code: `DEMO-${String(i + 1).padStart(2, "0")}`,
+    name: `Demo Site ${String.fromCharCode(65 + i)} — ${area}`,
+    address: "Demo location — not a real charging station",
     city,
     region: "Tamil Nadu",
     country: "India",
     latitude: lat,
     longitude: lng,
-    operator: "Demo operator (synthetic)",
+    operator: "Demo operator",
   }));
   // One station deliberately lacks coordinates to exercise honest missing-location handling.
   list.push({
-    code: "SYN-12",
-    name: "Synthetic Site L — location not recorded",
-    address: "Synthetic demonstration record — coordinates intentionally missing",
+    code: "DEMO-12",
+    name: "Demo Site L — location not recorded",
+    address: "Demo record — coordinates intentionally missing",
     city: "Chennai",
     region: "Tamil Nadu",
     country: "India",
     latitude: null,
     longitude: null,
-    operator: "Demo operator (synthetic)",
+    operator: "Demo operator",
   });
   return list;
 }

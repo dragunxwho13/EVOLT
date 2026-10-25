@@ -484,7 +484,7 @@ export function planSessions(
     if (impossible) {
       findings.push({
         level: "warning",
-        message: `${impossible} session(s) report more power lost than consumed, which is physically implausible for real measurements. The data may be synthetic — consider choosing provenance “simulated”.`,
+        message: `${impossible} session(s) report more power lost than consumed, which cannot happen in a correct measurement. Treat this file as unverified — consider choosing “Demo / sample data” as its source.`,
       });
     }
   }

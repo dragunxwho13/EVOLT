@@ -19,15 +19,20 @@ describe("admin security", () => {
     else process.env.EVOLT_LOCAL_DB = originalLocalDb;
   });
 
-  it("is protected by default and only opens for explicit local mode", () => {
+  it("is protected by default, open for the local launcher, and an explicit mode always wins", () => {
     delete process.env.EVOLT_EDIT_MODE;
     delete process.env.EVOLT_ADMIN_TOKEN;
     delete process.env.EVOLT_LOCAL_DB;
     expect(editMode()).toBe("token");
     expect(writesEnabled()).toBe(false);
     expect(() => requireAdmin(new Request("http://x/api", { method: "POST" }))).toThrow(/disabled/);
-    process.env.EVOLT_EDIT_MODE = "open";
+    // Regression: run-evolt writes EVOLT_LOCAL_DB=true but no EVOLT_EDIT_MODE; that must be open.
     process.env.EVOLT_LOCAL_DB = "true";
+    expect(editMode()).toBe("open");
+    process.env.EVOLT_EDIT_MODE = "token";
+    expect(editMode()).toBe("token");
+    delete process.env.EVOLT_LOCAL_DB;
+    process.env.EVOLT_EDIT_MODE = "open";
     expect(editMode()).toBe("open");
     expect(writesEnabled()).toBe(true);
     expect(() => requireAdmin(new Request("http://x/api", { method: "POST" }))).not.toThrow();

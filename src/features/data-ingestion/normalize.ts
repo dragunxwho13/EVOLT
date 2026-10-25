@@ -133,9 +133,11 @@ export function convertToCanonical(metric: MetricKey, value: number, unitRaw: st
 export function normalizeProvenance(raw: string, fallback: Provenance): Result<Provenance> {
   const s = raw.trim().toLowerCase();
   if (!s) return ok(fallback);
+  // "sample" / "demo" / "test" are the documented words for example data (stored as "simulated").
+  if (s === "sample" || s === "demo" || s === "test") return ok("simulated");
   return (PROVENANCES as readonly string[]).includes(s)
     ? ok(s as Provenance)
-    : fail(`Unknown provenance "${raw.trim()}". Use observed, derived, estimated or simulated.`);
+    : fail(`Unknown provenance "${raw.trim()}". Use observed, derived, estimated or sample.`);
 }
 
 export function cleanText(raw: string | undefined, max = 200): string | null {

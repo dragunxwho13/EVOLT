@@ -1,21 +1,19 @@
 import { expect, test } from "@playwright/test";
 
-test("mobile navigation opens, navigates and closes", async ({ page }) => {
-  await page.goto("/dashboard");
+test("company navigation opens, navigates and closes on a phone", async ({ page }) => {
+  await page.goto("/company");
   await page.getByRole("button", { name: "Open navigation" }).click();
   const nav = page.getByRole("dialog", { name: "Navigation" });
   await expect(nav).toBeVisible();
-  await nav.getByRole("link", { name: "Alerts" }).click();
-  await expect(page).toHaveURL(/\/alerts/);
-  await expect(page.getByRole("heading", { name: "Alerts", exact: true })).toBeVisible();
+  await nav.getByRole("link", { name: "Health alerts" }).click();
+  await expect(page).toHaveURL(/\/company\/alerts/);
+  await expect(page.getByRole("heading", { name: "Health alerts", exact: true })).toBeVisible();
 });
 
-test("station map switches between list and map views on small screens", async ({ page }) => {
-  await page.goto("/stations");
-  // Runs after the desktop suite, so match any station rather than a specific demo one.
-  const firstStation = page.getByRole("button", { name: /Site|Station/ }).first();
-  await expect(firstStation).toBeVisible();
-  await page.getByRole("button", { name: "Map", pressed: false }).click();
-  await expect(page.getByRole("region", { name: "Map of stations" })).toBeVisible();
-  await expect(firstStation).toBeHidden();
+test("the driver finder works on a phone without horizontal scrolling", async ({ page }) => {
+  await page.goto("/driver");
+  await page.getByLabel("Or start from a city in the data").selectOption({ index: 1 });
+  await expect(page.getByRole("heading", { name: /\d+ chargers? found|No charger matches/ })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });

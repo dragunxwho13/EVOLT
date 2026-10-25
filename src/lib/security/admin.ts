@@ -10,14 +10,21 @@ export type EditMode = "open" | "token";
 
 /**
  * How write operations are authorised.
- *  - "open" (default): anyone who can reach the app can import data and change alert
- *    status. Right for a local install or a demo; cross-site requests are still refused.
+ *  - "open": anyone who can reach the app can import data and change workflow status.
+ *    Right for a local install or a judged demo; cross-site requests are still refused.
  *  - "token": writes need EVOLT_ADMIN_TOKEN (Settings → Unlock editing, or a Bearer
  *    header). Use this for any deployment reachable by people you do not trust.
+ *
+ * An explicit EVOLT_EDIT_MODE always wins. When it is unset, a local install started by
+ * run-evolt (EVOLT_LOCAL_DB=true) is open and everything else (e.g. a hosted deployment)
+ * is protected. A previous change required *both* variables for open mode while the
+ * launcher only wrote one, which silently disabled every import.
  */
 export function editMode(): EditMode {
   const configured = process.env.EVOLT_EDIT_MODE?.trim().toLowerCase();
-  return configured === "open" && process.env.EVOLT_LOCAL_DB === "true" ? "open" : "token";
+  if (configured === "open") return "open";
+  if (configured === "token") return "token";
+  return process.env.EVOLT_LOCAL_DB === "true" ? "open" : "token";
 }
 
 /** True when write operations can currently succeed. */

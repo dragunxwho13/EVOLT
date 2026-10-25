@@ -21,6 +21,11 @@ export interface CandidateCharger {
   operationalStatus: OperationalStatus;
   healthStatus: HealthStatus;
   activeAlerts: number;
+  /** When the operational status was last recorded; null means never reported. */
+  statusAt?: string | null;
+  /** Bundled demo record (not a real site). */
+  isDemo?: boolean;
+  city?: string | null;
 }
 
 export interface RecommendationRequest {
@@ -31,6 +36,8 @@ export interface RecommendationRequest {
   vehicleMaxKw?: number | null;
   radiusKm: number;
   includeInspection: boolean;
+  /** Hard constraint: only chargers whose latest reported status is "available". */
+  availableOnly?: boolean;
   excludeChargerId?: string;
   limit: number;
 }
@@ -42,6 +49,8 @@ export interface Recommendation extends CandidateCharger {
   healthTier: number;
   reasons: string[];
   limitations: string[];
+  /** One plain sentence built only from statements the records support. */
+  summary: string;
 }
 
 export type ExclusionReason =
@@ -52,13 +61,18 @@ export type ExclusionReason =
   | "below_min_power"
   | "inspection_recommended"
   | "reference_charger"
-  | "unknown_connector";
+  | "unknown_connector"
+  | "not_available";
 
 export interface RecommendationResult {
   recommendations: Recommendation[];
   considered: number;
   excluded: Record<ExclusionReason, number>;
   rules: string[];
+  /** Requirements a charger must meet to be listed at all. */
+  hardConstraints: string[];
+  /** Ordering preferences applied to the chargers that pass the constraints. */
+  preferences: string[];
 }
 
 /** Lower is better. Health is the first sort key, so distance cannot outrank it. */
@@ -71,6 +85,23 @@ export const HEALTH_TIER: Record<HealthStatus, number> = {
 
 const AVAILABILITY_RANK: Record<OperationalStatus, number> = { available: 0, in_use: 1, unknown: 2, offline: 3 };
 export const DISTANCE_BAND_KM = 5;
+
+export const HARD_CONSTRAINTS = [
+  "Has a recorded location inside your search radius (straight-line distance, not driving distance).",
+  "Is not reported offline.",
+  "Uses your selected connector, if you chose one. Chargers whose connector is not recorded are left out, because compatibility cannot be confirmed.",
+  "Meets your minimum power, if you set one.",
+  "Is not flagged 'Inspection advised', unless you choose to include those.",
+  "Is reported available, if you ask for available chargers only.",
+];
+
+export const PREFERENCES = [
+  "Health evidence first: no issues in recorded data, then not yet assessed, then under observation, then inspection advised.",
+  "Then the latest reported status: available, then in use, then unknown.",
+  `Then distance in ${DISTANCE_BAND_KM} km bands, so a few hundred metres never outweighs the points above.`,
+  "Then higher rated power, then exact distance.",
+  "Price and opening hours are not used: the data does not contain them.",
+];
 
 export const RANKING_RULES = [
   "Only chargers with valid coordinates inside the search radius are considered; distance is straight-line, not driving distance.",
@@ -93,6 +124,7 @@ export function recommend(candidates: CandidateCharger[], req: RecommendationReq
     inspection_recommended: 0,
     reference_charger: 0,
     unknown_connector: 0,
+    not_available: 0,
   };
   const kept: Recommendation[] = [];
 
@@ -129,6 +161,10 @@ export function recommend(candidates: CandidateCharger[], req: RecommendationReq
     }
     if (c.healthStatus === "inspection_recommended" && !req.includeInspection) {
       excluded.inspection_recommended++;
+      continue;
+    }
+    if (req.availableOnly && c.operationalStatus !== "available") {
+      excluded.not_available++;
       continue;
     }
 
@@ -168,6 +204,7 @@ export function recommend(candidates: CandidateCharger[], req: RecommendationReq
       healthTier: HEALTH_TIER[c.healthStatus],
       reasons,
       limitations,
+      summary: "",
     });
   }
 
@@ -180,6 +217,44 @@ export function recommend(candidates: CandidateCharger[], req: RecommendationReq
       a.distanceKm - b.distanceKm ||
       a.chargerCode.localeCompare(b.chargerCode),
   );
-  const recommendations = kept.slice(0, req.limit).map((r, i) => ({ ...r, rank: i + 1 }));
-  return { recommendations, considered: candidates.length, excluded, rules: RANKING_RULES };
+  const top = kept.slice(0, req.limit);
+  const closest = top.length > 1 ? Math.min(...top.map((r) => r.distanceKm)) : null;
+  const recommendations = top.map((r, i) => {
+    const ranked = { ...r, rank: i + 1 };
+    return { ...ranked, summary: summarize(ranked, req, closest) };
+  });
+  return {
+    recommendations,
+    considered: candidates.length,
+    excluded,
+    rules: RANKING_RULES,
+    hardConstraints: HARD_CONSTRAINTS,
+    preferences: PREFERENCES,
+  };
+}
+
+const DRIVER_HEALTH_PHRASE: Record<HealthStatus, string> = {
+  normal: "has no issues in its recorded health data",
+  insufficient_data: "has not been assessed yet (too little health data)",
+  monitor: "is under observation for a pattern in its health data",
+  inspection_recommended: "has an inspection advised by its health data",
+};
+
+/**
+ * Builds the "why this charger" sentence. Every clause is derived from the record or the
+ * driver's own inputs; nothing is claimed that the data does not contain.
+ */
+export function summarize(r: Recommendation, req: RecommendationRequest, closestKm: number | null): string {
+  const parts: string[] = [];
+  if (req.connectorTypes) parts.push(`matches your ${req.connectorTypes.map((c) => CONNECTOR_LABELS[c]).join(" / ")} connector`);
+  parts.push(DRIVER_HEALTH_PHRASE[r.healthStatus]);
+  if (r.operationalStatus === "available" || r.operationalStatus === "in_use") {
+    parts.push(`was marked ${r.operationalStatus === "available" ? "available" : "in use"} in the latest reported status`);
+  }
+  const distance = `is ${formatDistanceKm(r.distanceKm)} away in a straight line`;
+  parts.push(closestKm !== null && r.distanceKm === closestKm ? `${distance}, the closest of these results` : distance);
+  if (r.effectivePowerKw !== null) parts.push(`is rated ${formatNumber(r.effectivePowerKw, 0)} kW`);
+  const lead = r.rank === 1 ? "Top match: it" : "It";
+  const sentence = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0]!;
+  return `${lead} ${sentence}.`;
 }

@@ -278,6 +278,22 @@ export const modelRuns = pgTable(
   (t) => [index("model_runs_target_created_idx").on(t.target, t.createdAt)],
 );
 
+export const INSIGHT_REVIEW_STATUSES = ["reviewed", "resolved", "dismissed"] as const;
+export type InsightReviewStatus = (typeof INSIGHT_REVIEW_STATUSES)[number];
+
+/**
+ * Workflow status a person set on a company action item. It records a decision, not the
+ * physical state of a charger: "resolved" never means the charger was verified as repaired.
+ * `evidenceDigest` lets the UI say when the evidence changed after the review.
+ */
+export const insightReviews = pgTable("insight_reviews", {
+  key: text("key").primaryKey(),
+  status: text("status").$type<InsightReviewStatus>().notNull(),
+  note: text("note"),
+  evidenceDigest: text("evidence_digest").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const stationsRelations = relations(stations, ({ many }) => ({ chargers: many(chargers) }));
 export const chargersRelations = relations(chargers, ({ one, many }) => ({
   station: one(stations, { fields: [chargers.stationId], references: [stations.id] }),

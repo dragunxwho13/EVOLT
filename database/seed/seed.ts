@@ -33,7 +33,7 @@ async function main() {
     if (reset) {
       const deleted = await db.delete(stations).where(eq(stations.isSynthetic, true)).returning({ id: stations.id });
       await db.delete(vehicleProfiles).where(eq(vehicleProfiles.isSynthetic, true));
-      console.info(`Removed ${deleted.length} synthetic station(s) and their chargers, observations and alerts.`);
+      console.info(`Removed ${deleted.length} demo station(s) and their chargers, observations and alerts.`);
     }
 
     const stationIds = new Map<string, string>();
@@ -112,7 +112,7 @@ async function main() {
       .select({ n: sql<number>`count(*)::int` })
       .from(chargers)
       .where(and(eq(chargers.isSynthetic, true)))) as [{ n: number }];
-    console.info(`Synthetic data ready: ${stationIds.size} stations, ${n} chargers, ${inserted} new observations.`);
+    console.info(`Demo data ready: ${stationIds.size} stations, ${n} chargers, ${inserted} new observations.`);
   } finally {
     await pool.end();
   }
