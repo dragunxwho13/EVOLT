@@ -21,11 +21,6 @@ export interface ReferenceOption {
   healthStatus: HealthStatus;
 }
 
-export interface VehicleOption {
-  code: string;
-  name: string;
-}
-
 const EXCLUSION_LABEL: Record<ExclusionReason, string> = {
   no_coordinates: "no coordinates",
   outside_radius: "outside the radius",
@@ -37,7 +32,7 @@ const EXCLUSION_LABEL: Record<ExclusionReason, string> = {
   unknown_connector: "connector type not recorded",
 };
 
-export function RecommendationFinder({ references, vehicles }: { references: ReferenceOption[]; vehicles: VehicleOption[] }) {
+export function RecommendationFinder({ references }: { references: ReferenceOption[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -48,7 +43,6 @@ export function RecommendationFinder({ references, vehicles }: { references: Ref
     const lng = Number(params.get("lng"));
     return params.get("lat") && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
   });
-  const [vehicle, setVehicle] = useState(params.get("vehicle") ?? "");
   const [connector, setConnector] = useState(params.get("connector") ?? "");
   const [minPowerKw, setMinPowerKw] = useState(params.get("minPowerKw") ?? "");
   const [radiusKm, setRadiusKm] = useState(params.get("radiusKm") ?? "25");
@@ -66,13 +60,12 @@ export function RecommendationFinder({ references, vehicles }: { references: Ref
       s.set("lat", origin.lat.toFixed(6));
       s.set("lng", origin.lng.toFixed(6));
     }
-    if (vehicle) s.set("vehicle", vehicle);
-    else if (connector) s.set("connector", connector);
+    if (connector) s.set("connector", connector);
     if (minPowerKw) s.set("minPowerKw", minPowerKw);
     s.set("radiusKm", radiusKm);
     if (includeInspection) s.set("includeInspection", "true");
     return s;
-  }, [fromCharger, origin, vehicle, connector, minPowerKw, radiusKm, includeInspection]);
+  }, [fromCharger, origin, connector, minPowerKw, radiusKm, includeInspection]);
 
   const ready = Boolean(fromCharger || origin);
 
@@ -157,18 +150,8 @@ export function RecommendationFinder({ references, vehicles }: { references: Ref
 
         <fieldset className="space-y-3 border-t border-line pt-4">
           <legend className="mb-1 font-semibold">Compatibility</legend>
-          <Field label="Vehicle profile" htmlFor="rec-vehicle">
-            <select id="rec-vehicle" className={inputClass} value={vehicle} onChange={(e) => setVehicle(e.target.value)}>
-              <option value="">Not specified</option>
-              {vehicles.map((v) => (
-                <option key={v.code} value={v.code}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Or a connector type" htmlFor="rec-connector" hint={vehicle ? "Ignored while a vehicle profile is selected." : undefined}>
-            <select id="rec-connector" className={inputClass} value={connector} onChange={(e) => setConnector(e.target.value)} disabled={Boolean(vehicle)}>
+          <Field label="Connector type" htmlFor="rec-connector">
+            <select id="rec-connector" className={inputClass} value={connector} onChange={(e) => setConnector(e.target.value)}>
               <option value="">Not specified</option>
               {KNOWN_CONNECTOR_TYPES.map((c) => (
                 <option key={c} value={c}>

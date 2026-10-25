@@ -425,7 +425,7 @@ The complete template is `.env.example`. Never commit real credentials.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `EVOLT_EDIT_MODE` | No | `open` for local/demo editing or `token` for protected writes |
+| `EVOLT_EDIT_MODE` | No | `token` by default; `open` is honored only with `EVOLT_LOCAL_DB=true` |
 | `EVOLT_ADMIN_TOKEN` | Token mode | Long random token for imports, alert actions, and recomputation |
 | `EVOLT_MAX_UPLOAD_BYTES` | No | Upload limit; default 2 MiB, hard maximum 4 MiB |
 | `NEXT_PUBLIC_MAP_TILE_URL` | No | Map tile URL template |

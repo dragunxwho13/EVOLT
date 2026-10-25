@@ -100,13 +100,13 @@ function EvaluationSection() {
         threshold. Results are computed live from the code.
       </p>
       <Notice tone="warn">
-        Synthetic benchmark only. The trend parameters were tuned on different generated series (seeds 1–40) and are evaluated
+        Development benchmark only. The trend parameters were tuned on different generated series (seeds 1–40) and are evaluated
         here on held-out seeds from {report.seedOffset + 1}. These figures describe behaviour on idealised scenarios; they are not
         an estimate of real-world accuracy.
       </Notice>
       <div className="mt-4 overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="w-full min-w-[720px] text-sm">
-          <caption className="sr-only">Detector comparison on synthetic scenarios</caption>
+          <caption className="sr-only">Detector comparison on generated scenarios</caption>
           <thead className="border-b border-line text-left text-muted">
             <tr>
               <th scope="col" className="px-5 py-2.5 font-medium">Scenario</th>
@@ -213,7 +213,7 @@ async function QualitySection() {
               {PROVENANCES.map((p) => (
                 <li key={p} className="flex items-baseline justify-between gap-3">
                   <span>
-                    <span className="text-ink capitalize">{p}</span>
+                    <span className="text-ink capitalize">{p === "simulated" ? "Generated" : p}</span>
                     <span className="block text-xs text-muted">{PROVENANCE_DESCRIPTIONS[p]}</span>
                   </span>
                   <span className="num">{q.provenance[p]}</span>
@@ -223,7 +223,7 @@ async function QualitySection() {
           )}
           {q.provenance.simulated > 0 && (
             <p className="mt-3 text-sm text-watch">
-              {formatPercent(q.provenance.simulated / Math.max(totalObs, 1))} of stored readings are simulated demonstration data.
+              {formatPercent(q.provenance.simulated / Math.max(totalObs, 1))} of stored readings are generated development data.
             </p>
           )}
         </Panel>

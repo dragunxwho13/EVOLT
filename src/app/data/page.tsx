@@ -91,7 +91,7 @@ async function InventoryPanel() {
   if (!result.ok) return <ErrorState {...result.error} />;
   const inv = result.data;
   return (
-    <Panel title="What is loaded" description="Demo records are synthetic and labelled everywhere they appear.">
+    <Panel title="What is loaded" description="Development records are labelled everywhere they appear.">
       <dl className="mb-4 grid grid-cols-3 gap-3 text-sm">
         <div>
           <dt className="text-muted">Imported stations</dt>
@@ -114,7 +114,7 @@ async function InventoryPanel() {
 function DataDictionary() {
   return (
     <div className="space-y-5">
-      <Panel title="Example files" description="Small synthetic files in the expected format.">
+      <Panel title="Example files" description="Small generated files in the expected format.">
         <ul className="space-y-1.5 text-sm">
           <li>
             <a className="text-signal hover:underline" href="/samples/ev-charging-grid-sessions.csv" download>

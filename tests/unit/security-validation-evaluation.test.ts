@@ -10,15 +10,24 @@ const TOKEN = "unit-test-admin-token-0123456789";
 describe("admin security", () => {
   const original = process.env.EVOLT_ADMIN_TOKEN;
   const originalMode = process.env.EVOLT_EDIT_MODE;
+  const originalLocalDb = process.env.EVOLT_LOCAL_DB;
   afterEach(() => {
     process.env.EVOLT_ADMIN_TOKEN = original;
     if (originalMode === undefined) delete process.env.EVOLT_EDIT_MODE;
     else process.env.EVOLT_EDIT_MODE = originalMode;
+    if (originalLocalDb === undefined) delete process.env.EVOLT_LOCAL_DB;
+    else process.env.EVOLT_LOCAL_DB = originalLocalDb;
   });
 
-  it("is open by default: writes need no token but cross-site requests are refused", () => {
+  it("is protected by default and only opens for explicit local mode", () => {
     delete process.env.EVOLT_EDIT_MODE;
     delete process.env.EVOLT_ADMIN_TOKEN;
+    delete process.env.EVOLT_LOCAL_DB;
+    expect(editMode()).toBe("token");
+    expect(writesEnabled()).toBe(false);
+    expect(() => requireAdmin(new Request("http://x/api", { method: "POST" }))).toThrow(/disabled/);
+    process.env.EVOLT_EDIT_MODE = "open";
+    process.env.EVOLT_LOCAL_DB = "true";
     expect(editMode()).toBe("open");
     expect(writesEnabled()).toBe(true);
     expect(() => requireAdmin(new Request("http://x/api", { method: "POST" }))).not.toThrow();

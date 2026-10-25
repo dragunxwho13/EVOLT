@@ -28,7 +28,7 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await connection();
   if (!uuidSchema.safeParse(id).success) notFound();
-  const result = await load(() => getStation(id, { includeSynthetic: false }));
+  const result = await load(() => getStation(id));
   if (!result.ok) {
     if (result.notFound) notFound();
     return <ErrorState {...result.error} />;

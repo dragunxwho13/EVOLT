@@ -54,7 +54,7 @@ export const PROVENANCE_DESCRIPTIONS: Record<Provenance, string> = {
   observed: "Directly measured or logged by equipment",
   derived: "Calculated from other observed values",
   estimated: "Approximated or inferred, not measured",
-  simulated: "Generated synthetically for demonstration or testing",
+  simulated: "Generated for development or testing",
 };
 
 export const ALERT_STATUSES = ["open", "acknowledged", "resolved", "dismissed"] as const;

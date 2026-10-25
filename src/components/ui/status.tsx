@@ -137,7 +137,7 @@ export function ProvenanceTag({ provenance }: { provenance: Provenance }) {
       )}
       title={PROVENANCE_DESCRIPTIONS[provenance]}
     >
-      {provenance}
+      {provenance === "simulated" ? "Generated" : provenance}
     </span>
   );
 }
@@ -146,9 +146,9 @@ export function SyntheticTag() {
   return (
     <span
       className="inline-flex items-center rounded border border-dashed border-watch/60 px-1.5 py-px text-xs text-watch"
-      title="Synthetic demonstration record — not real-world data"
+      title="Development record — not live operational data"
     >
-      Synthetic
+      Development
     </span>
   );
 }

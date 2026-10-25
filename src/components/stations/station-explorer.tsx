@@ -11,6 +11,7 @@ import {
   HEALTH_STATUSES,
   OPERATIONAL_LABELS,
   OPERATIONAL_STATUSES,
+  type OperationalStatus,
 } from "@/config/domain";
 import { StationMap } from "@/components/map/station-map";
 import { Button, ErrorState, Field, inputClass } from "@/components/ui/primitives";
@@ -22,6 +23,13 @@ import { formatDistanceKm, formatNumber } from "@/lib/utils/format";
 type GeoState = { status: "idle" } | { status: "locating" } | { status: "ok"; lat: number; lng: number } | { status: "error"; message: string };
 
 const POWER_OPTIONS = [22, 50, 100, 150];
+
+function stationMarkerStatus(station: StationListItem): OperationalStatus {
+  if (station.availableCount > 0) return "available";
+  if (station.chargers.length > 0 && station.chargers.every((c) => c.operationalStatus === "in_use")) return "in_use";
+  if (station.chargers.length > 0 && station.chargers.every((c) => c.operationalStatus === "offline")) return "offline";
+  return "unknown";
+}
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -140,6 +148,7 @@ export function StationExplorer() {
       latitude: s.latitude!,
       longitude: s.longitude!,
       status: s.worstHealth,
+      markerStatus: stationMarkerStatus(s),
       detail: `${s.chargerCount} charger${s.chargerCount === 1 ? "" : "s"}`,
       chargers: s.chargers.map((c) => ({
         id: c.id,
@@ -257,6 +266,10 @@ export function StationExplorer() {
           </button>
         ))}
       </div>
+      <p className="mb-3 rounded-md border border-line bg-surface px-3 py-2 text-xs leading-relaxed text-muted">
+        Map markers show station records from the connected registry. Availability is shown only when the source reports a recent status;
+        connector health stays <span className="font-medium text-ink">insufficient data</span> until measured readings are imported.
+      </p>
 
       {error ? (
         <ErrorState
@@ -285,6 +298,11 @@ export function StationExplorer() {
                 onSelect={(id) => select(id, true)}
                 origin={geo.status === "ok" ? { lat: geo.lat, lng: geo.lng } : null}
               />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 px-1 text-xs text-muted" aria-label="Map legend">
+              <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-ok align-middle" />Healthy evidence</span>
+              <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-unknown align-middle" />Health not measured</span>
+              <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-watch align-middle" />Needs review</span>
             </div>
             {selected && <StationPreview station={selected} onClose={() => setSelectedId(null)} />}
           </div>

@@ -16,6 +16,7 @@ export interface StationListItem {
   city: string | null;
   region: string | null;
   operator: string | null;
+  source: string | null;
   latitude: number | null;
   longitude: number | null;
   isSynthetic: boolean;
@@ -73,6 +74,7 @@ export function summarizeStation(s: Station, all: ChargerLite[], matching: Charg
     city: s.city,
     region: s.region,
     operator: s.operator,
+    source: s.source,
     latitude: s.latitude,
     longitude: s.longitude,
     isSynthetic: s.isSynthetic,
@@ -109,7 +111,7 @@ export async function listStations(q: StationQuery): Promise<StationListResult> 
     .from(stations)
     .where(
       and(
-        q.includeSynthetic ? undefined : eq(stations.isSynthetic, false),
+        eq(stations.isSynthetic, false),
         text
           ? or(ilike(stations.name, text), ilike(stations.code, text), ilike(stations.city, text), ilike(stations.address, text), ilike(stations.operator, text))
           : undefined,
@@ -182,12 +184,12 @@ export interface StationDetail {
   chargers: (Charger & { activeAlerts: number })[];
 }
 
-export async function getStation(id: string, options: { includeSynthetic?: boolean } = {}): Promise<StationDetail> {
+export async function getStation(id: string): Promise<StationDetail> {
   const db = getDb();
   const [station] = await db
     .select()
     .from(stations)
-    .where(and(eq(stations.id, id), options.includeSynthetic ? undefined : eq(stations.isSynthetic, false)));
+    .where(and(eq(stations.id, id), eq(stations.isSynthetic, false)));
   if (!station) throw notFound("Station");
   const rows = await db.select().from(chargers).where(eq(chargers.stationId, id)).orderBy(asc(chargers.code));
   const alertCounts = rows.length

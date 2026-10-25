@@ -3,9 +3,8 @@
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef } from "react";
-import { HEALTH_SHORT_LABELS, HEALTH_STATUSES, type HealthStatus } from "@/config/domain";
+import { HEALTH_SHORT_LABELS, HEALTH_STATUSES, OPERATIONAL_LABELS, OPERATIONAL_STATUSES, type HealthStatus, type OperationalStatus } from "@/config/domain";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_ATTRIBUTION, MAP_TILE_URL } from "@/config/map";
-import { HEALTH_HEX_VAR } from "@/components/ui/status";
 
 export interface MapPointInput {
   id: string;
@@ -13,6 +12,7 @@ export interface MapPointInput {
   latitude: number;
   longitude: number;
   status: HealthStatus;
+  markerStatus?: HealthStatus | OperationalStatus;
   detail?: string;
   chargers?: Array<{
     id: string;
@@ -34,17 +34,34 @@ export interface StationMapProps {
   ariaLabel?: string;
 }
 
-const GLYPH: Record<HealthStatus, string> = {
+type MarkerStatus = HealthStatus | OperationalStatus;
+
+const GLYPH: Record<MarkerStatus, string> = {
   normal: "✓",
   monitor: "◐",
   inspection_recommended: "!",
   insufficient_data: "–",
+  available: "⚡",
+  in_use: "↻",
+  offline: "×",
+  unknown: "?",
 };
 
-function pinIcon(status: HealthStatus, selected: boolean) {
+const MARKER_COLOR: Record<MarkerStatus, string> = {
+  normal: "var(--ok)",
+  monitor: "var(--watch)",
+  inspection_recommended: "var(--inspect)",
+  insufficient_data: "var(--unknown)",
+  available: "var(--signal)",
+  in_use: "var(--watch)",
+  offline: "var(--inspect)",
+  unknown: "var(--unknown)",
+};
+
+function pinIcon(status: MarkerStatus, selected: boolean) {
   return L.divIcon({
     className: "evolt-pin",
-    html: `<span data-selected="${selected}" style="background:${HEALTH_HEX_VAR[status]}"><i>${GLYPH[status]}</i></span>`,
+    html: `<span data-selected="${selected}" style="background:${MARKER_COLOR[status]}"><i>${GLYPH[status]}</i></span>`,
     iconSize: [26, 26],
     iconAnchor: [13, 26],
     tooltipAnchor: [0, -24],
@@ -53,7 +70,7 @@ function pinIcon(status: HealthStatus, selected: boolean) {
 
 // This module only ever loads in the browser (see station-map.tsx), so icons can be built once.
 const ICONS = Object.fromEntries(
-  HEALTH_STATUSES.flatMap((s) => [
+  [...HEALTH_STATUSES, ...OPERATIONAL_STATUSES].flatMap((s) => [
     [`${s}:0`, pinIcon(s, false)],
     [`${s}:1`, pinIcon(s, true)],
   ]),
@@ -64,7 +81,11 @@ function tooltipNode(p: MapPointInput): HTMLElement {
   const el = document.createElement("div");
   const strong = document.createElement("strong");
   strong.textContent = p.name;
-  el.append(strong, document.createElement("br"), `${HEALTH_SHORT_LABELS[p.status]}${p.detail ? ` · ${p.detail}` : ""}`);
+  const markerStatus = p.markerStatus ?? p.status;
+  const statusLabel = markerStatus in OPERATIONAL_LABELS
+    ? OPERATIONAL_LABELS[markerStatus as OperationalStatus]
+    : HEALTH_SHORT_LABELS[markerStatus as HealthStatus];
+  el.append(strong, document.createElement("br"), `${statusLabel}${p.detail ? ` · ${p.detail}` : ""}`);
   return el;
 }
 
@@ -161,12 +182,13 @@ export default function StationMapInner({ points, selectedId, onSelect, origin, 
     }
     for (const p of points) {
       const selected = p.id === selectedId;
+      const markerStatus = p.markerStatus ?? p.status;
       const marker = L.marker([p.latitude, p.longitude], {
-        icon: ICONS[`${p.status}:${selected ? 1 : 0}`],
+        icon: ICONS[`${markerStatus}:${selected ? 1 : 0}`],
         zIndexOffset: selected ? 1000 : 0,
         keyboard: true,
-        title: `${p.name} — ${HEALTH_SHORT_LABELS[p.status]}`,
-        alt: `${p.name} — ${HEALTH_SHORT_LABELS[p.status]}`,
+        title: `${p.name} — ${markerStatus in OPERATIONAL_LABELS ? OPERATIONAL_LABELS[markerStatus as OperationalStatus] : HEALTH_SHORT_LABELS[markerStatus as HealthStatus]}`,
+        alt: `${p.name} — ${markerStatus in OPERATIONAL_LABELS ? OPERATIONAL_LABELS[markerStatus as OperationalStatus] : HEALTH_SHORT_LABELS[markerStatus as HealthStatus]}`,
       });
       marker.bindTooltip(tooltipNode(p), { direction: "top" });
       marker.bindPopup(popupNode(p), { maxWidth: 320, minWidth: 240, className: "evolt-map-popup-container" });

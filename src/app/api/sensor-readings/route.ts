@@ -49,6 +49,7 @@ export const POST = withErrorHandling(async (request: Request) => {
 });
 
 export const GET = dynamicGet(async (request: NextRequest) => {
+  requireAdmin(request);
   const chargerParam = request.nextUrl.searchParams.get("chargerId");
   const db = getDb();
   const rows = await db
