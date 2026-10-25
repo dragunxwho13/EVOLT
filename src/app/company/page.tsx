@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense, type ReactNode } from "react";
+import { FleetMap } from "@/components/company/fleet-map";
 import { HealthDistribution } from "@/components/dashboard/health-distribution";
 import { RateIntervals } from "@/components/charts/rate-intervals";
 import { TrendChart } from "@/components/charts/trend-chart";
@@ -9,6 +10,8 @@ import { InsightCard } from "@/components/insights/insight-card";
 import { ButtonLink, EmptyState, ErrorState, Notice, PageHeader, Panel, PanelSkeleton, Skeleton } from "@/components/ui/primitives";
 import { getPerformance } from "@/features/insights/performance-service";
 import { listInsights } from "@/features/insights/service";
+import { actionCountsByStation } from "@/features/insights/station-actions";
+import { listStations } from "@/features/station-discovery/service";
 import { latestReports } from "@/features/learning/service";
 import { getOverview } from "@/lib/analytics/overview";
 import { load } from "@/lib/http/load";
@@ -57,13 +60,21 @@ async function OverviewContent() {
   await connection();
   const now = new Date();
   const result = await load(async () => {
-    const [o, insights, perf, reports] = await Promise.all([getOverview(now), listInsights(now), getPerformance(), latestReports()]);
-    return { o, insights, perf, reports };
+    const [o, insights, perf, reports, stations] = await Promise.all([
+      getOverview(now),
+      listInsights(now),
+      getPerformance(),
+      latestReports(),
+      listStations({ limit: 500, offset: 0 }),
+    ]);
+    const chargerStation = new Map(stations.items.flatMap((s) => s.chargers.map((c) => [c.id, s.id] as const)));
+    return { o, insights, perf, reports, stations: stations.items, actionCounts: actionCountsByStation(insights.items, chargerStation) };
   });
   if (!result.ok) {
     return <ErrorState {...result.error} action={<ButtonLink href="/company/settings">Check configuration</ButtonLink>} />;
   }
-  const { o, insights, perf, reports } = result.data;
+  const { o, insights, perf, reports, stations, actionCounts } = result.data;
+  const mapped = stations.filter((s) => s.latitude !== null && s.longitude !== null).length;
 
   if (o.chargers.total === 0) {
     return (
@@ -133,7 +144,24 @@ async function OverviewContent() {
         )}
       </section>
 
-      {/* 2 ── Connector health across the fleet */}
+      {/* 2 ── Where it is happening */}
+      {mapped > 0 && (
+        <Panel
+          title="Where attention is needed"
+          description={`${mapped} of ${stations.length} stations have recorded coordinates. Pins show each station's most concerning charger; select one for its chargers and open items.`}
+          actions={
+            <ButtonLink href="/company/map" size="sm">
+              Open fleet map
+            </ButtonLink>
+          }
+          flush
+          bodyClassName="p-2"
+        >
+          <FleetMap stations={stations} actionCounts={actionCounts} compact />
+        </Panel>
+      )}
+
+      {/* 3 ── Connector health across the fleet */}
       <Panel
         title={`Connector health · ${o.chargers.total} chargers at ${o.stations.total} stations`}
         description="Each charger's category from its own measurement history. Click a category to list those chargers."

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, BarChart3, Cable, ChartLine, Database, FlaskConical, Gauge, ListChecks, Menu, Settings, TriangleAlert, X } from "lucide-react";
+import { ArrowLeftRight, BarChart3, Cable, ChartLine, Database, FlaskConical, Gauge, ListChecks, Map as MapIcon, Menu, Settings, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ComponentType } from "react";
@@ -26,6 +26,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Fleet",
     items: [
+      { href: "/company/map", label: "Fleet map", icon: MapIcon },
       { href: "/company/chargers", label: "Chargers", icon: Cable },
       { href: "/company/alerts", label: "Health alerts", icon: TriangleAlert },
     ],

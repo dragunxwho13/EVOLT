@@ -149,3 +149,23 @@ export async function compareChargers(ids: string[], origin: LatLng | null): Pro
 export async function stationHistory(stationId: string): Promise<SessionSummary> {
   return summarizeSessions(await loadSessions({ stationId }));
 }
+
+export interface NearbyStation {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  health: HealthStatus;
+  chargers: number;
+  distanceKm: number | null;
+}
+
+/** The nearest stations with coordinates to a point (for station-page maps). */
+export async function nearbyStations(origin: LatLng, excludeId: string, limit = 6): Promise<NearbyStation[]> {
+  const { listStations } = await import("@/features/station-discovery/service");
+  const r = await listStations({ lat: origin.lat, lng: origin.lng, limit: limit + 1, offset: 0 });
+  return r.items
+    .filter((s) => s.id !== excludeId && s.latitude !== null && s.longitude !== null)
+    .slice(0, limit)
+    .map((s) => ({ id: s.id, name: s.name, lat: s.latitude!, lng: s.longitude!, health: s.worstHealth, chargers: s.chargerCount, distanceKm: s.distanceKm }));
+}

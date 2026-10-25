@@ -12,7 +12,7 @@ first, and why.
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-134%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-145%20passing-2ea44f)
 ![External APIs](https://img.shields.io/badge/external%20APIs-none-6e7781)
 
 [Quick start](#-quick-start) · [For judges](#-a-2-minute-tour-for-judges) · [Features](#-what-it-does) · [How it works](#-how-it-works) · [Documentation](#-documentation)
@@ -35,8 +35,8 @@ EVOLT turns charging data into two focused experiences built on one database:
 
 | 🚗 **Driver** | 🏢 **Charging company** |
 |---|---|
-| Find compatible chargers nearby, ranked so the ones with healthy evidence come first | See prioritised **action items**, each with its evidence, the rule that fired, why it matters and the next step |
-| Compare up to four chargers side by side | Track connector health and station performance, then export the station table |
+| Find compatible chargers nearby, ranked so the ones with healthy evidence come first, and see them on a map with the **best match starred** | See prioritised **action items**, each with its evidence, the rule that fired, why it matters and the next step |
+| Compare up to four chargers side by side; click any map pin to see the chargers at that spot | A **fleet map** coloured by connector health; track station performance and export the station table |
 | Read a plain-English reason for every recommendation | Record decisions (reviewed / resolved / dismissed); they are stored in the database |
 
 > **Every number is computed from stored records.** Nothing is hard-coded or shown as live
@@ -114,9 +114,9 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 
 | # | Go to | What to notice |
 |---|---|---|
-| 1 | **I'm a driver** → *start from a city* → **Chennai** | Ranked chargers. Each card gives a reason built only from facts in the record |
+| 1 | **I'm a driver** → *start from a city* → **Chennai** | The map stars the best match; click any pin to see that station's chargers. Each result card gives a reason built only from facts in the record |
 | 2 | Set **Your connector**, tick **Compare** on two results | Hard filters apply instantly; the side-by-side table highlights only objective bests |
-| 3 | **Company workspace** → **Overview** | Opens with *Needs attention first*, not a wall of charts |
+| 3 | **Company workspace** → **Overview** → **Fleet map** | Opens with *Needs attention first*; the map shows where, coloured by health |
 | 4 | **Action items** → open any item | Evidence, triggering rule, why it matters, next step; mark it reviewed and it persists |
 | 5 | **Performance** | Station table with uncertainty intervals and CSV export; the takeaways say when a difference is just noise |
 | 6 | **Learned model** → type `4.2` → **Classify** | A live prediction from the stored model, with its rule and tested accuracy |
@@ -140,8 +140,9 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
   - *Availability unknown* is never shown as available.
   - Status times are shown when they were recorded.
   - Distances are straight-line.
-- **Compare** up to four chargers, and open a **station page** with chargers, a coordinate copy
-  button and its session history. No directions are claimed.
+- **Map:** your location and search radius. The best match is starred, other matches are numbered by rank, and non-matching stations are faint. Click a pin to see a popup of every charger at that station, or click empty map to search from that point. Each result card has *Show on map*.
+- **Compare** up to four chargers, and open a **station page** with chargers, a mini map of nearby stations, a coordinate copy
+  button and its session history. No turn-by-turn directions are claimed.
 - **Empty results** offer *search a larger radius* or *remove optional filters*, and say what was
   excluded and why.
 
@@ -156,7 +157,8 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 
 | Page | Answers |
 |---|---|
-| **Overview** | What needs attention first · fleet connector health · session KPIs with definitions · trends with computed takeaways |
+| **Overview** | What needs attention first · where it is (map) · fleet connector health · session KPIs with definitions · trends with computed takeaways |
+| **Fleet map** | Every located station coloured by its most concerning charger, with health filters, a needs-attention list, and popups showing chargers, alerts and open items |
 | **Action items** | What is happening · why it matters · what to do next · which rule fired · priority · confidence |
 | **Performance** | How each station performed, with intervals; filter, sort, export CSV |
 | **Chargers / Health alerts** | Per-charger evidence charts; acknowledge, resolve or dismiss alerts |
@@ -238,8 +240,12 @@ flowchart LR
 ```
 
 **Stack:** Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · PostgreSQL + Drizzle · Zod ·
-Recharts · Vitest · Playwright. No map provider and no external API: distance is calculated
-with the Haversine formula on stored coordinates.
+Recharts · Vitest · Playwright.
+
+**Maps without a map provider:** EVOLT draws its own map (Web Mercator, SVG) over a 268 KB
+background file bundled with the app, built from public-domain Natural Earth data with India's
+official boundaries. There are no tiles, API keys or network calls, and distances use the
+Haversine formula on stored coordinates.
 
 <details>
 <summary><b>Project structure</b></summary>
@@ -262,15 +268,15 @@ Full breakdown and design decisions → [docs/architecture.md](docs/architecture
 </details>
 
 <details>
-<summary><b>Quality and testing</b> — 134 automated tests</summary>
+<summary><b>Quality and testing</b> — 145 automated tests</summary>
 
 <br/>
 
 | Suite | Count | Covers |
 |---|---|---|
-| Unit | 92 | Metrics against pandas/SciPy, every action-item rule, ranking, training, import, security |
+| Unit | 99 | Metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security |
 | Integration | 22 | Real API handlers + PostgreSQL: imports, reviews, CSV export, predictions, access control |
-| End-to-end | 20 | Both user journeys in Chromium (desktop + mobile), regressions, wording checks |
+| End-to-end | 24 | Both user journeys in Chromium (desktop + mobile), maps and popups, regressions, wording checks |
 
 ```bash
 npm run lint && npm run typecheck && npm run test:unit
@@ -288,6 +294,7 @@ What was and was not verified → [docs/testing.md](docs/testing.md).
   inconsistent, so its findings describe the file, not a real network.
 - **Demo stations.** They are labelled *Demo* everywhere and are not real sites. One click removes them.
 - **No live data.** There is no live availability, price or opening hours, so none is shown.
+- **Mapped stations.** Only stations with recorded coordinates appear on maps; the 19 dataset stations have none and are listed separately.
 - **No authentication.** The driver/company switch is a demo-mode view choice. Use token mode
   before exposing EVOLT publicly.
 - **Not a safety certification.** Health categories summarise recorded evidence.

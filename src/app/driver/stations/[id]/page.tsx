@@ -8,7 +8,9 @@ import { CopyCoordinates } from "@/components/driver/copy-coordinates";
 import { StationHistoryPanel } from "@/components/sessions/station-history";
 import { ButtonLink, ErrorState, Notice, PageHeader, Panel, PanelSkeleton } from "@/components/ui/primitives";
 import { DemoTag, HealthBadge, OperationalBadge } from "@/components/ui/status";
-import { stationHistory } from "@/features/driver/service";
+import { nearbyStations, stationHistory } from "@/features/driver/service";
+import { worstStatus as worstOf } from "@/features/anomaly-detection/assess-metric";
+import { StationMiniMap } from "@/components/map/station-mini-map";
 import { isValidLatLng } from "@/features/station-discovery/geo";
 import { getStation } from "@/features/station-discovery/service";
 import { load } from "@/lib/http/load";
@@ -29,12 +31,20 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await connection();
   if (!uuidSchema.safeParse(id).success) notFound();
-  const result = await load(async () => ({ ...(await getStation(id)), history: await stationHistory(id) }));
+  const result = await load(async () => {
+    const detail = await getStation(id);
+    const located = isValidLatLng(detail.station.latitude, detail.station.longitude);
+    const [history, nearby] = await Promise.all([
+      stationHistory(id),
+      located ? nearbyStations({ lat: detail.station.latitude!, lng: detail.station.longitude! }, id) : Promise.resolve([]),
+    ]);
+    return { ...detail, history, nearby };
+  });
   if (!result.ok) {
     if (result.notFound) notFound();
     return <ErrorState {...result.error} />;
   }
-  const { station, chargers, history } = result.data;
+  const { station, chargers, history, nearby } = result.data;
   const hasCoords = isValidLatLng(station.latitude, station.longitude);
   const place = [station.address, station.city, station.region].filter(Boolean).join(", ");
 
@@ -108,11 +118,24 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
           <Panel title="Location">
             {hasCoords ? (
               <div className="space-y-3 text-sm">
+                <StationMiniMap
+                  hrefBase="/driver/stations"
+                  station={{
+                    id: station.id,
+                    name: station.name,
+                    lat: station.latitude!,
+                    lng: station.longitude!,
+                    health: worstOf(chargers.map((c) => c.healthStatus)),
+                    chargers: chargers.length,
+                    distanceKm: null,
+                  }}
+                  nearby={nearby}
+                />
                 <p className="num">
                   {station.latitude!.toFixed(5)}, {station.longitude!.toFixed(5)}
                 </p>
                 <CopyCoordinates lat={station.latitude!} lng={station.longitude!} />
-                <p className="text-muted">EVOLT does not provide maps or directions. Paste the coordinates into your own navigation app.</p>
+                <p className="text-muted">EVOLT does not provide turn-by-turn directions. Paste the coordinates into your own navigation app.</p>
               </div>
             ) : (
               <p className="text-sm text-muted">No location is recorded for this station, so EVOLT cannot measure how far away it is.</p>

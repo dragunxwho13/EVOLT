@@ -1,14 +1,16 @@
 "use client";
 
-import { Check, LocateFixed, MapPinned, SlidersHorizontal } from "lucide-react";
+import { Check, LocateFixed, Map as MapIcon, MapPinned, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CONNECTOR_LABELS, KNOWN_CONNECTOR_TYPES } from "@/config/domain";
 import { Button, ButtonLink, ErrorState, Field, inputClass } from "@/components/ui/primitives";
 import { DemoTag, HealthBadge, OperationalBadge } from "@/components/ui/status";
 import type { ExclusionReason, Recommendation } from "@/features/recommendations/engine";
 import type { RecommendationResponse } from "@/features/recommendations/service";
+import type { StationListResult } from "@/features/station-discovery/service";
+import { DriverMap } from "./driver-map";
 import { ApiError, apiFetch } from "@/lib/http/client";
 import { cn } from "@/lib/utils/cn";
 import { formatDistanceKm, formatNumber } from "@/lib/utils/format";
@@ -70,6 +72,9 @@ export function DriverFinder({ startingPoints }: { startingPoints: StartingPoint
   const [geoError, setGeoError] = useState<string | null>(null);
 
   const [response, setResponse] = useState<{ key: string; result: RecommendationResponse | null; error: string | null } | null>(null);
+  const [stationsResp, setStationsResp] = useState<{ key: string; data: StationListResult } | null>(null);
+  const [mapStation, setMapStation] = useState<string | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
 
   const query = useMemo(() => {
     const s = new URLSearchParams();
@@ -114,6 +119,18 @@ export function DriverFinder({ startingPoints }: { startingPoints: StartingPoint
       cancelled = true;
     };
   }, [query, ready]);
+
+  // Every station with a location, for the map (with distances once a location is known).
+  const stationsKey = origin ? `lat=${origin.lat.toFixed(5)}&lng=${origin.lng.toFixed(5)}` : "";
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<StationListResult>(`/api/stations?limit=500${stationsKey ? `&${stationsKey}` : ""}`)
+      .then((d) => !cancelled && setStationsResp({ key: stationsKey, data: d }))
+      .catch(() => !cancelled && setStationsResp({ key: stationsKey, data: { items: [], total: 0, limit: 500, offset: 0, withoutCoordinates: 0, sortedByDistance: false } }));
+    return () => {
+      cancelled = true;
+    };
+  }, [stationsKey]);
 
   const loading = ready && response?.key !== query;
   const result = response?.key === query ? response.result : null;
@@ -330,9 +347,41 @@ export function DriverFinder({ startingPoints }: { startingPoints: StartingPoint
           )}
         </div>
 
+        <div ref={mapRef} className="mb-4 scroll-mt-24">
+          <DriverMap
+            stations={stationsResp?.data.items ?? []}
+            results={result?.recommendations ?? []}
+            origin={
+              origin
+                ? { ...origin, label: originLabel || "Your search point" }
+                : result
+                  ? { lat: result.origin.lat, lng: result.origin.lng, label: result.origin.label }
+                  : null
+            }
+            radiusKm={Number(radiusKm)}
+            selectedStationId={mapStation}
+            onSelectStation={setMapStation}
+            onPickLocation={(lat, lng) => {
+              setOrigin({ lat, lng });
+              setOriginLabel("Point chosen on the map");
+              setMapStation(null);
+            }}
+            compareIds={selected}
+            compareFull={selected.length >= MAX_COMPARE}
+            onToggleCompare={toggleCompare}
+            fitKey={`${origin ? `${origin.lat},${origin.lng}` : result ? `${result.origin.lat},${result.origin.lng}` : "none"}|${radiusKm}`}
+          />
+          {stationsResp && stationsResp.data.withoutCoordinates > 0 && (
+            <p className="mt-1.5 text-xs text-muted">
+              {stationsResp.data.withoutCoordinates} station{stationsResp.data.withoutCoordinates === 1 ? " has" : "s have"} no recorded location and
+              cannot be placed on the map (listed below the results).
+            </p>
+          )}
+        </div>
+
         {!ready ? (
           <div className="rounded-lg border border-dashed border-line-strong bg-surface p-6 text-sm text-muted">
-            <p className="font-medium text-ink">Start by sharing a location.</p>
+            <p className="font-medium text-ink">Start by sharing a location — or click a point on the map.</p>
             <p className="mt-1">
               EVOLT ranks chargers with a recorded location by distance from you. Your location is used only in your browser
               session to calculate distances; it is not stored.
@@ -374,7 +423,17 @@ export function DriverFinder({ startingPoints }: { startingPoints: StartingPoint
             )}
             <ol className="space-y-3">
               {sorted.map((r) => (
-                <ResultCard key={r.chargerId} r={r} checked={selected.includes(r.chargerId)} compareFull={selected.length >= MAX_COMPARE} onToggle={() => toggleCompare(r.chargerId)} />
+                <ResultCard
+                  key={r.chargerId}
+                  r={r}
+                  checked={selected.includes(r.chargerId)}
+                  compareFull={selected.length >= MAX_COMPARE}
+                  onToggle={() => toggleCompare(r.chargerId)}
+                  onShowOnMap={() => {
+                    setMapStation(r.stationId);
+                    mapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                />
               ))}
             </ol>
             {result && <Exclusions result={result} />}
@@ -428,7 +487,19 @@ export function DriverFinder({ startingPoints }: { startingPoints: StartingPoint
   );
 }
 
-function ResultCard({ r, checked, compareFull, onToggle }: { r: Recommendation; checked: boolean; compareFull: boolean; onToggle: () => void }) {
+function ResultCard({
+  r,
+  checked,
+  compareFull,
+  onToggle,
+  onShowOnMap,
+}: {
+  r: Recommendation;
+  checked: boolean;
+  compareFull: boolean;
+  onToggle: () => void;
+  onShowOnMap: () => void;
+}) {
   return (
     <li className={cn("rounded-lg border bg-surface", r.rank === 1 ? "border-ink/40 shadow-lift" : "border-line")}>
       <div className="flex flex-wrap items-start gap-3 p-4">
@@ -494,9 +565,15 @@ function ResultCard({ r, checked, compareFull, onToggle }: { r: Recommendation; 
             "Compare"
           )}
         </label>
-        <Link href={`/driver/stations/${r.stationId}`} className="text-sm font-medium text-signal underline-offset-4 hover:underline">
-          Station details
-        </Link>
+        <span className="flex items-center gap-4">
+          <button type="button" onClick={onShowOnMap} className="inline-flex items-center gap-1 text-sm font-medium text-signal underline-offset-4 hover:underline">
+            <MapIcon className="h-3.5 w-3.5" aria-hidden />
+            Show on map
+          </button>
+          <Link href={`/driver/stations/${r.stationId}`} className="text-sm font-medium text-signal underline-offset-4 hover:underline">
+            Station details
+          </Link>
+        </span>
       </div>
     </li>
   );

@@ -28,6 +28,13 @@
   --unknown-soft: #eaedf0;
 
   --trace-band: rgba(36, 87, 197, 0.09);
+  --map-water: #dfe8ef;
+  --map-land: #f7f8f6;
+  --map-land-focus: #ffffff;
+  --map-border: #9aa6b2;
+  --map-state: #c7cfd6;
+  --map-road: #e3c9a0;
+  --map-label: #56636f;
   --shadow-lift: 0 1px 0 rgba(20, 32, 43, 0.04), 0 8px 24px -12px rgba(20, 32, 43, 0.18);
   color-scheme: light;
 }
@@ -56,6 +63,13 @@
     --unknown-soft: #222d37;
 
     --trace-band: rgba(126, 162, 242, 0.12);
+    --map-water: #0c141b;
+    --map-land: #1b2631;
+    --map-land-focus: #212e3a;
+    --map-border: #5d6b78;
+    --map-state: #33424f;
+    --map-road: #5a4a33;
+    --map-label: #a2aeb9;
     --shadow-lift: 0 1px 0 rgba(0, 0, 0, 0.2), 0 10px 28px -14px rgba(0, 0, 0, 0.6);
     color-scheme: dark;
   }

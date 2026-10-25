@@ -8,7 +8,8 @@ import { StationHistoryPanel } from "@/components/sessions/station-history";
 import { ButtonLink, ErrorState, KeyValues, PageHeader, Panel, PanelSkeleton } from "@/components/ui/primitives";
 import { DemoTag, HealthBadge, OperationalBadge } from "@/components/ui/status";
 import { worstStatus } from "@/features/anomaly-detection/assess-metric";
-import { stationHistory } from "@/features/driver/service";
+import { nearbyStations, stationHistory } from "@/features/driver/service";
+import { StationMiniMap } from "@/components/map/station-mini-map";
 import { getStation } from "@/features/station-discovery/service";
 import { isValidLatLng } from "@/features/station-discovery/geo";
 import { load } from "@/lib/http/load";
@@ -29,12 +30,20 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await connection();
   if (!uuidSchema.safeParse(id).success) notFound();
-  const result = await load(async () => ({ ...(await getStation(id)), history: await stationHistory(id) }));
+  const result = await load(async () => {
+    const detail = await getStation(id);
+    const located = isValidLatLng(detail.station.latitude, detail.station.longitude);
+    const [history, nearby] = await Promise.all([
+      stationHistory(id),
+      located ? nearbyStations({ lat: detail.station.latitude!, lng: detail.station.longitude! }, id) : Promise.resolve([]),
+    ]);
+    return { ...detail, history, nearby };
+  });
   if (!result.ok) {
     if (result.notFound) notFound();
     return <ErrorState {...result.error} />;
   }
-  const { station, chargers, history } = result.data;
+  const { station, chargers, history, nearby } = result.data;
   const now = new Date();
   const hasCoords = isValidLatLng(station.latitude, station.longitude);
   const worst = worstStatus(chargers.map((c) => c.healthStatus));
@@ -89,6 +98,16 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
           <StationHistoryPanel history={history} audience="company" />
         </div>
       </div>
+
+      {hasCoords && (
+        <Panel title="Location" description="This station and its nearest neighbours with recorded coordinates." className="mt-5" flush bodyClassName="p-2">
+          <StationMiniMap
+            hrefBase="/company/stations"
+            station={{ id: station.id, name: station.name, lat: station.latitude!, lng: station.longitude!, health: worst, chargers: chargers.length, distanceKm: null }}
+            nearby={nearby}
+          />
+        </Panel>
+      )}
 
       <Panel title="Chargers" className="mt-5" flush>
         {chargers.length === 0 ? (
