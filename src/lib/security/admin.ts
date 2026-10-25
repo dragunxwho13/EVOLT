@@ -16,7 +16,8 @@ export type EditMode = "open" | "token";
  *    header). Use this for any deployment reachable by people you do not trust.
  */
 export function editMode(): EditMode {
-  return process.env.EVOLT_EDIT_MODE?.trim().toLowerCase() === "token" ? "token" : "open";
+  const configured = process.env.EVOLT_EDIT_MODE?.trim().toLowerCase();
+  return configured === "open" && process.env.EVOLT_LOCAL_DB === "true" ? "open" : "token";
 }
 
 /** True when write operations can currently succeed. */

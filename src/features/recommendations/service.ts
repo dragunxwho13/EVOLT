@@ -38,7 +38,7 @@ export async function getRecommendations(q: RecommendationQuery): Promise<Recomm
       })
       .from(chargers)
       .innerJoin(stations, eq(stations.id, chargers.stationId))
-      .where(and(eq(chargers.id, q.fromCharger), q.includeSynthetic ? undefined : eq(chargers.isSynthetic, false)));
+      .where(and(eq(chargers.id, q.fromCharger), eq(chargers.isSynthetic, false)));
     if (!row) throw notFound("Reference charger");
     reference = { chargerId: row.id, chargerCode: row.code, stationName: row.stationName, healthStatus: row.healthStatus };
     referenceConnector = row.connectorType;
@@ -87,7 +87,7 @@ export async function getRecommendations(q: RecommendationQuery): Promise<Recomm
     })
     .from(chargers)
     .innerJoin(stations, eq(stations.id, chargers.stationId))
-    .where(q.includeSynthetic ? undefined : and(eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false)));
+    .where(and(eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false)));
 
   const alertCounts = await db
     .select({ chargerId: alerts.chargerId, n: count() })

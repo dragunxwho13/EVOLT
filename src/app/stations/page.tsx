@@ -10,7 +10,7 @@ export default function StationsPage() {
     <>
       <PageHeader
         title="Station map"
-        description="Find imported stations by name, connector, power, availability or connector health. Distances are straight-line, never driving distance."
+        description="Find real registry stations by name, connector and nameplate power. Live availability and connector health appear only when the source provides recent evidence."
       />
       <Suspense fallback={<PanelSkeleton rows={8} />}>
         <StationExplorer />

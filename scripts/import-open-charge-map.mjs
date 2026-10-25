@@ -48,6 +48,9 @@ function connector(title) {
 }
 
 function status(item) {
+  const verifiedAt = item?.DateLastVerified ? Date.parse(item.DateLastVerified) : NaN;
+  const fresh = Number.isFinite(verifiedAt) && Date.now() - verifiedAt <= 7 * 24 * 60 * 60 * 1000;
+  if (!fresh) return "unknown";
   if (item?.StatusType?.IsOperational === true) return "available";
   if (item?.StatusType?.IsOperational === false) return "offline";
   return "unknown";

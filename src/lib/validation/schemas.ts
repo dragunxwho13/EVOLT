@@ -30,8 +30,8 @@ export const stationQuerySchema = z
     lng: opt(lngSchema),
     limit: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(500).default(100)),
     offset: z.preprocess(blankToUndefined, z.coerce.number().int().min(0).default(0)),
-    includeSynthetic: z.preprocess(blankToUndefined, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
   })
+  .strict()
   .refine((v) => (v.lat === undefined) === (v.lng === undefined), {
     message: "Provide both lat and lng, or neither.",
     path: ["lat"],
@@ -77,8 +77,8 @@ export const recommendationQuerySchema = z
     radiusKm: z.preprocess(blankToUndefined, z.coerce.number().min(1).max(500).default(25)),
     includeInspection: z.preprocess(blankToUndefined, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
     limit: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(50).default(10)),
-    includeSynthetic: z.preprocess(blankToUndefined, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
   })
+  .strict()
   .refine((v) => (v.lat === undefined) === (v.lng === undefined), {
     message: "Provide both lat and lng, or neither.",
     path: ["lat"],

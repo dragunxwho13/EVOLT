@@ -231,7 +231,7 @@ describe("API and persistence", () => {
   });
 
   it("lists import history and overview figures from stored data", async () => {
-    const hist = (await body<Data<{ status: string }[]>>(await datasetsGET())).data;
+    const hist = (await body<Data<{ status: string }[]>>(await datasetsGET(new NextRequest("http://localhost/api/datasets")))).data;
     expect(hist.filter((h) => h.status === "completed")).toHaveLength(3);
     const o = (await body<Data<{ chargers: { total: number }; stations: { total: number } }>>(await overviewGET())).data;
     expect(o.chargers.total).toBe(3);

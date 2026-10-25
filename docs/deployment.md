@@ -63,7 +63,7 @@ git push -u origin main
    | Name | Production | Preview | Notes |
    |---|---|---|---|
    | `DATABASE_URL` | prod DB URL | preview DB URL | required |
-   | `EVOLT_EDIT_MODE` | `token` | `token` | **set to `token` on public deployments** (default `open` lets anyone edit) |
+   | `EVOLT_EDIT_MODE` | `token` | `token` | **keep `token` on deployments**; `open` is honored only with `EVOLT_LOCAL_DB=true` |
    | `EVOLT_ADMIN_TOKEN` | long random string | different random string | required in token mode; ≥ 16 chars |
    | `EVOLT_MAX_UPLOAD_BYTES` | optional | optional | default 2 MiB, max 4 MiB |
    | `NEXT_PUBLIC_MAP_TILE_URL` | optional | optional | tile provider for production traffic |

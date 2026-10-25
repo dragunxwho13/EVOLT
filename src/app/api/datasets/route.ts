@@ -5,7 +5,10 @@ import { dynamicGet, json } from "@/lib/http/route";
 import { requireAdmin } from "@/lib/security/admin";
 
 /** Import history. */
-export const GET = dynamicGet(async () => json(await listImports(50)));
+export const GET = dynamicGet(async (request) => {
+  requireAdmin(request as Request);
+  return json(await listImports(50));
+});
 
 /** Validates the file again server-side and writes accepted rows in one transaction. Admin only. */
 export const POST = withErrorHandling(async (request: Request) => {

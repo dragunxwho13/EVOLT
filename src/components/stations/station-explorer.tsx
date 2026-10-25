@@ -257,6 +257,10 @@ export function StationExplorer() {
           </button>
         ))}
       </div>
+      <p className="mb-3 rounded-md border border-line bg-surface px-3 py-2 text-xs leading-relaxed text-muted">
+        Map markers show station records from the connected registry. Availability is shown only when the source reports a recent status;
+        connector health stays <span className="font-medium text-ink">insufficient data</span> until measured readings are imported.
+      </p>
 
       {error ? (
         <ErrorState
@@ -285,6 +289,11 @@ export function StationExplorer() {
                 onSelect={(id) => select(id, true)}
                 origin={geo.status === "ok" ? { lat: geo.lat, lng: geo.lng } : null}
               />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 px-1 text-xs text-muted" aria-label="Map legend">
+              <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-ok align-middle" />Healthy evidence</span>
+              <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-unknown align-middle" />Health not measured</span>
+              <span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-watch align-middle" />Needs review</span>
             </div>
             {selected && <StationPreview station={selected} onClose={() => setSelectedId(null)} />}
           </div>

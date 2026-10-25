@@ -13,7 +13,7 @@ export default function DriversPage() {
     <>
       <PageHeader
         title="Find a charge with confidence"
-        description="See compatible stations, compare current availability, and choose an alternative using clear health evidence."
+        description="See real station locations and connector options. Choose alternatives using only evidence the connected sources actually provide."
         actions={<ButtonLink href="/stations" variant="primary">Explore stations</ButtonLink>}
       />
       <DriverContent />
@@ -23,7 +23,7 @@ export default function DriversPage() {
 
 async function DriverContent() {
   await connection();
-  const result = await load(() => listStations({ limit: 6, offset: 0, includeSynthetic: false }));
+  const result = await load(() => listStations({ limit: 6, offset: 0 }));
   if (!result.ok) return <EmptyState title="Stations are temporarily unavailable">Try the station map again in a moment.</EmptyState>;
 
   const stations = result.data.items;
