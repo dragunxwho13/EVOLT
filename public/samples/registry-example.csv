@@ -1,0 +1,4 @@
+station_code,station_name,address,city,region,country,latitude,longitude,operator,charger_code,connector_type,rated_power_kw,operational_status
+EX-01,Example Site 1 (sample data),Sample record — not a real station,Chennai,Tamil Nadu,India,13.0604,80.2496,Example operator,EX-01-A,CCS2,60,available
+EX-01,Example Site 1 (sample data),Sample record — not a real station,Chennai,Tamil Nadu,India,13.0604,80.2496,Example operator,EX-01-B,Type 2,22,in use
+EX-02,Example Site 2 (sample data),Sample record — location unknown,Chennai,Tamil Nadu,India,,,Example operator,EX-02-A,CHAdeMO,50,

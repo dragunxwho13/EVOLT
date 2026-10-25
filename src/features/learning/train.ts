@@ -1,0 +1,197 @@
+/**
+ * Trains and cross-validates classifiers for one labelled target. Pure and
+ * deterministic: the same rows and seed always give the same report.
+ *
+ * Honesty rules:
+ *  - Every model is scored on folds it did not see (stratified k-fold), including the
+ *    choice of feature and thresholds.
+ *  - A target only counts as learnable when the best model beats the majority-class
+ *    baseline clearly (by ≥ 5 points of accuracy and by more than 2 fold-standard-deviations).
+ *    Otherwise the report says so and no predictive model is offered.
+ */
+import {
+  classMetrics,
+  confusionMatrix,
+  fitLogistic,
+  fitMajority,
+  fitThreshold,
+  mean,
+  predictLogistic,
+  predictThreshold,
+  std,
+  stratifiedFolds,
+  type Sample,
+} from "./models";
+import type { FittedModel, ModelEvaluation, ModelKind, TargetReport } from "./types";
+
+export const TRAINING = { folds: 5, seed: 20260425, minRows: 40, minLift: 0.05 } as const;
+
+const DESCRIPTIONS: Record<ModelKind, { name: string; description: string }> = {
+  majority: { name: "Majority-class baseline", description: "Always predicts the most common class. Any useful model must beat this." },
+  threshold: {
+    name: "Learned thresholds (one measurement)",
+    description: "Finds the single measurement and cut points that best separate the classes. Fully explainable.",
+  },
+  logistic: {
+    name: "Multinomial logistic regression",
+    description: "Uses every numeric column and the area/charging-mode categories together.",
+  },
+};
+
+export function humanize(key: string): string {
+  const s = key.replace(/_/g, " ").trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function evaluate(kind: ModelKind, samples: Sample[], folds: number[], k: number, features: string[], classes: string[]): ModelEvaluation {
+  const truth: string[] = [];
+  const pred: string[] = [];
+  const foldAcc: number[] = [];
+  for (let f = 0; f < k; f++) {
+    const train = samples.filter((_, i) => folds[i] !== f);
+    const test = samples.filter((_, i) => folds[i] === f);
+    if (!test.length) continue;
+    let predict: (x: Record<string, number>) => string;
+    if (kind === "majority") {
+      const label = fitMajority(train);
+      predict = () => label;
+    } else if (kind === "threshold") {
+      const m = fitThreshold(train, features, classes);
+      const fallback = fitMajority(train);
+      predict = m ? (x) => predictThreshold(m, x) : () => fallback;
+    } else {
+      const m = fitLogistic(train, features, classes);
+      predict = (x) => predictLogistic(m, x);
+    }
+    let correct = 0;
+    for (const s of test) {
+      const p = predict(s.x);
+      truth.push(s.y);
+      pred.push(p);
+      if (p === s.y) correct++;
+    }
+    foldAcc.push(correct / test.length);
+  }
+  const confusion = confusionMatrix(truth, pred, classes);
+  const perClass = classMetrics(confusion, classes);
+  return {
+    model: kind,
+    ...DESCRIPTIONS[kind],
+    accuracy: mean(foldAcc),
+    accuracyStd: std(foldAcc),
+    macroF1: mean(perClass.map((c) => c.f1)),
+    foldAccuracies: foldAcc,
+    confusion,
+    perClass,
+  };
+}
+
+/** Reduces a list to at most `max` evenly spaced items (for plotting). */
+function sample<T>(items: T[], max: number): T[] {
+  if (items.length <= max) return items;
+  const step = items.length / max;
+  return Array.from({ length: max }, (_, i) => items[Math.floor(i * step)]!);
+}
+
+export function trainTarget(target: string, samples: Sample[], features: string[], now: Date = new Date()): TargetReport {
+  const counts: Record<string, number> = {};
+  for (const s of samples) counts[s.y] = (counts[s.y] ?? 0) + 1;
+  const classes = Object.keys(counts).sort();
+  const k = TRAINING.folds;
+  const folds = stratifiedFolds(samples, k, TRAINING.seed);
+  const baselineAccuracy = Math.max(...Object.values(counts)) / samples.length;
+
+  const evaluations = (["majority", "threshold", "logistic"] as const).map((kind) => evaluate(kind, samples, folds, k, features, classes));
+  const [, ...candidates] = evaluations;
+  const bestCandidate = [...candidates].sort((a, b) => b.macroF1 - a.macroF1 || b.accuracy - a.accuracy)[0]!;
+  const lift = bestCandidate.accuracy - baselineAccuracy;
+  const learnable = lift >= TRAINING.minLift && bestCandidate.accuracy - 2 * bestCandidate.accuracyStd > baselineAccuracy;
+  // Prefer the explainable threshold model when it is within one point of the best.
+  const thresholdEval = evaluations[1]!;
+  const chosen: ModelEvaluation = learnable
+    ? thresholdEval.accuracy >= bestCandidate.accuracy - 0.01
+      ? thresholdEval
+      : bestCandidate
+    : evaluations[0]!;
+
+  const thresholdModel = fitThreshold(samples, features, classes);
+  let finalModel: FittedModel | null = null;
+  if (learnable) finalModel = chosen.model === "threshold" ? thresholdModel : fitLogistic(samples, features, classes);
+
+  const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
+  const label = humanize(target);
+  let verdict: string;
+  if (learnable && chosen.model === "threshold" && thresholdModel) {
+    const cuts = thresholdModel.cuts.map((c) => c.toFixed(2)).join(" and ");
+    verdict =
+      `${label} can be predicted: ${pct(chosen.accuracy)} accuracy on unseen data versus ${pct(baselineAccuracy)} for always guessing ` +
+      `the most common class. Almost all of the signal is in ${humanize(thresholdModel.feature).toLowerCase()} — the learned cut points ` +
+      `${cuts} reproduce the label as well as a model using every column (${pct(evaluations[2]!.accuracy)}).`;
+  } else if (learnable) {
+    verdict = `${label} can be predicted: ${pct(chosen.accuracy)} accuracy on unseen data versus a ${pct(baselineAccuracy)} baseline, using all columns together.`;
+  } else {
+    const topAccuracy = Math.max(...candidates.map((c) => c.accuracy));
+    verdict =
+      `${label} could not be predicted from this data. The best model reached ${pct(topAccuracy)} on unseen data, ` +
+      `not meaningfully better than always guessing the most common class (${pct(baselineAccuracy)}). The label appears unrelated to the ` +
+      `recorded measurements, so EVOLT offers no prediction for it.`;
+  }
+
+  const distribution = thresholdModel
+    ? (thresholdModel.order.map((c) => ({
+        label: c,
+        values: sample(
+          samples.filter((s) => s.y === c).map((s) => s.x[thresholdModel.feature]!),
+          300,
+        ),
+      })) as TargetReport["distribution"])
+    : [];
+
+  return {
+    target,
+    targetLabel: label,
+    rows: samples.length,
+    classes,
+    classCounts: counts,
+    folds: k,
+    seed: TRAINING.seed,
+    features,
+    baselineAccuracy,
+    evaluations,
+    best: chosen.model,
+    learnable,
+    verdict,
+    finalModel,
+    thresholdModel,
+    distribution,
+    trainedAt: now.toISOString(),
+  };
+}
+
+export function predict(model: FittedModel, x: Record<string, number>): string {
+  return model.kind === "threshold" ? predictThreshold(model, x) : predictLogistic(model, x);
+}
+
+/** Builds feature vectors: numeric columns present in every row, plus one-hot categories. */
+export function buildFeatures(
+  rows: { values: Record<string, number>; area: string | null; chargingMode: string | null }[],
+): { features: string[]; vectors: Record<string, number>[] } {
+  const idLike = /(^|_)(id|code)$/i;
+  const numeric = rows.length
+    ? Object.keys(rows[0]!.values).filter((k) => !idLike.test(k) && rows.every((r) => Number.isFinite(r.values[k])))
+    : [];
+  const areas = [...new Set(rows.map((r) => r.area).filter((v): v is string => Boolean(v)))].sort();
+  const modes = [...new Set(rows.map((r) => r.chargingMode).filter((v): v is string => Boolean(v)))].sort();
+  const oneHot = [...areas.map((a) => `area=${a}`), ...modes.map((m) => `mode=${m}`)];
+  const features = [...numeric.sort(), ...(oneHot.length > 1 ? oneHot : [])];
+  const vectors = rows.map((r) => {
+    const v: Record<string, number> = {};
+    for (const k of numeric) v[k] = r.values[k]!;
+    if (oneHot.length > 1) {
+      for (const a of areas) v[`area=${a}`] = r.area === a ? 1 : 0;
+      for (const m of modes) v[`mode=${m}`] = r.chargingMode === m ? 1 : 0;
+    }
+    return v;
+  });
+  return { features, vectors };
+}
