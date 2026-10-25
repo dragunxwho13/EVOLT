@@ -11,6 +11,7 @@ import {
   HEALTH_STATUSES,
   OPERATIONAL_LABELS,
   OPERATIONAL_STATUSES,
+  type OperationalStatus,
 } from "@/config/domain";
 import { StationMap } from "@/components/map/station-map";
 import { Button, ErrorState, Field, inputClass } from "@/components/ui/primitives";
@@ -22,6 +23,13 @@ import { formatDistanceKm, formatNumber } from "@/lib/utils/format";
 type GeoState = { status: "idle" } | { status: "locating" } | { status: "ok"; lat: number; lng: number } | { status: "error"; message: string };
 
 const POWER_OPTIONS = [22, 50, 100, 150];
+
+function stationMarkerStatus(station: StationListItem): OperationalStatus {
+  if (station.availableCount > 0) return "available";
+  if (station.chargers.length > 0 && station.chargers.every((c) => c.operationalStatus === "in_use")) return "in_use";
+  if (station.chargers.length > 0 && station.chargers.every((c) => c.operationalStatus === "offline")) return "offline";
+  return "unknown";
+}
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -140,6 +148,7 @@ export function StationExplorer() {
       latitude: s.latitude!,
       longitude: s.longitude!,
       status: s.worstHealth,
+      markerStatus: stationMarkerStatus(s),
       detail: `${s.chargerCount} charger${s.chargerCount === 1 ? "" : "s"}`,
       chargers: s.chargers.map((c) => ({
         id: c.id,
