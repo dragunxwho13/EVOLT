@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Imports real charging-station registry data from OpenStreetMap through Overpass.
+ * Imports real charging-station registry data through the public map registry.
  *
- * OSM is a station registry, not a live telemetry source. This importer only writes
+ * The registry is a station directory, not a live telemetry source. This importer only writes
  * station identity, coordinates, connector tags, operator, and nameplate power when
  * the source provides them. Availability and health remain unknown unless OSM explicitly
  * reports a compatible status; no electrical readings or health observations are created.
  *
  * Usage:
- *   DATABASE_URL=... npm run db:import:osm -- --bbox 12.85,80.05,13.15,80.35
- *   EVOLT_OSM_BBOX=12.85,80.05,13.15,80.35 npm run db:import:osm
+ *   DATABASE_URL=... npm run db:import:registry -- --bbox 12.85,80.05,13.15,80.35
+ *   EVOLT_REGISTRY_BBOX=12.85,80.05,13.15,80.35 npm run db:import:registry
  */
 import { Client } from "pg";
 
@@ -120,7 +120,7 @@ function stationRows(elements) {
     if (connectors.length === 0) continue;
     const kind = element.type === "node" ? "node" : "area";
     const stationCode = `osm-${kind}-${element.id}`;
-    const stationName = clean(tags.name ?? tags.operator ?? tags.network, `OSM charging station ${element.id}`);
+    const stationName = clean(tags.name ?? tags.operator ?? tags.network, `Charging station ${element.id}`);
     const address = clean([tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" "));
     const city = clean(tags["addr:city"] ?? tags["addr:town"] ?? tags["addr:municipality"]);
     const region = clean(tags["addr:state"] ?? tags["addr:district"] ?? tags["addr:province"]);
@@ -155,7 +155,7 @@ async function fetchOverpass(query) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
-          headers: { accept: "application/json", "user-agent": "EVOLT OpenStreetMap importer/1.0" },
+          headers: { accept: "application/json", "user-agent": "EVOLT registry importer/1.0" },
           signal: AbortSignal.timeout(90_000),
         });
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -169,14 +169,14 @@ async function fetchOverpass(query) {
   throw new Error(`All Overpass endpoints failed: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
 
-const bbox = parseBbox(argument("--bbox") ?? process.env.EVOLT_OSM_BBOX ?? DEFAULT_BBOX);
+const bbox = parseBbox(argument("--bbox") ?? process.env.EVOLT_REGISTRY_BBOX ?? DEFAULT_BBOX);
 const dryRun = process.argv.includes("--dry-run");
 const query = `[out:json][timeout:90];nwr[amenity=charging_station](${bbox});out center tags;`;
-console.log(`Loading OpenStreetMap charging stations for bbox ${bbox}...`);
+console.log(`Loading charging stations for bbox ${bbox}...`);
 const payload = await fetchOverpass(query);
 const rows = stationRows(Array.isArray(payload.elements) ? payload.elements : []);
 const chargers = rows.flatMap((row) => row.chargers);
-if (rows.length === 0) throw new Error("No OSM charging stations with connector tags were found in this area.");
+if (rows.length === 0) throw new Error("No charging stations with connector tags were found in this area.");
 console.log(`Found ${rows.length} stations and ${chargers.length} connector records with source metadata.`);
 if (dryRun) process.exit(0);
 
@@ -203,7 +203,7 @@ try {
         row.station.latitude,
         row.station.longitude,
         row.station.operator,
-        "OpenStreetMap via Overpass",
+        "Imported station registry",
       ],
     );
     for (const charger of row.chargers) {
@@ -228,5 +228,5 @@ try {
   await client.end();
 }
 
-console.log(`Imported ${rows.length} real OSM stations and ${chargers.length} chargers.`);
-console.log("Availability is only populated when OSM supplies a status; health and telemetry remain unavailable without measurements.");
+console.log(`Imported ${rows.length} registry stations and ${chargers.length} chargers.`);
+console.log("Availability is only populated when the registry supplies a status; health and telemetry remain unavailable without measurements.");

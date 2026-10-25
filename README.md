@@ -471,19 +471,16 @@ Vehicle compatibility profiles can be refreshed from the external
 locations or charger telemetry, so the importer does not create stations, readings, alerts, or
 health scores.
 
-For real station locations and connector metadata, use the dedicated
-[Open Charge Map](https://openchargemap.org/site) importer:
+For real station locations and connector metadata, use the no-key registry importer:
 
 ```bash
-OCM_API_KEY=your-key DATABASE_URL=your-database-url npm run db:import:ocm
+DATABASE_URL=your-database-url npm run db:import:registry
 ```
 
-The default search area is Chennai (50 km around `13.05,80.22`); override it with
-`--latitude`, `--longitude`, `--distance`, and `--maxresults`. The key is read from the
-environment only and is never stored by EVOLT. OCM status is provider-reported rather than
-guaranteed live telemetry. The importer therefore creates no health observations, alerts,
-voltage, current, resistance, or temperature readings. `npm run db:import:osm` remains available
-as a no-key registry fallback.
+The default search area is Chennai; override it with `--bbox south,west,north,east`.
+The registry importer writes station identity, coordinates, connector metadata, and
+nameplate power when available. It does not invent health observations, alerts, voltage,
+current, resistance, or temperature readings.
 
 ## Datasets and import formats
 
