@@ -5,8 +5,8 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { CONNECTOR_LABELS } from "@/config/domain";
 import { StationMap } from "@/components/map/station-map";
-import { ButtonLink, ErrorState, KeyValues, Notice, PageHeader, Panel, PanelSkeleton } from "@/components/ui/primitives";
-import { HealthBadge, OperationalBadge, SyntheticTag } from "@/components/ui/status";
+import { ButtonLink, ErrorState, KeyValues, PageHeader, Panel, PanelSkeleton } from "@/components/ui/primitives";
+import { HealthBadge, OperationalBadge } from "@/components/ui/status";
 import { worstStatus } from "@/features/anomaly-detection/assess-metric";
 import { getStation } from "@/features/station-discovery/service";
 import { isValidLatLng } from "@/features/station-discovery/geo";
@@ -28,7 +28,7 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await connection();
   if (!uuidSchema.safeParse(id).success) notFound();
-  const result = await load(() => getStation(id));
+  const result = await load(() => getStation(id, { includeSynthetic: false }));
   if (!result.ok) {
     if (result.notFound) notFound();
     return <ErrorState {...result.error} />;
@@ -48,7 +48,6 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
             </Link>
             <span aria-hidden>/</span>
             <span className="num">{station.code}</span>
-            {station.isSynthetic && <SyntheticTag />}
           </>
         }
         title={station.name}
@@ -61,11 +60,6 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
           ) : null
         }
       />
-      {station.isSynthetic && (
-        <div className="mb-5">
-          <Notice tone="warn">This is a synthetic demonstration station. It does not represent a real site.</Notice>
-        </div>
-      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Panel title="Station details" className="lg:col-span-1">
           <KeyValues
@@ -93,7 +87,25 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
           {hasCoords ? (
             <StationMap
               className="h-64"
-              points={[{ id: station.id, name: station.name, latitude: station.latitude!, longitude: station.longitude!, status: worst }]}
+              points={[
+                {
+                  id: station.id,
+                  name: station.name,
+                  latitude: station.latitude!,
+                  longitude: station.longitude!,
+                  status: worst,
+                  detail: `${chargers.length} charger${chargers.length === 1 ? "" : "s"}`,
+                  chargers: chargers.map((c) => ({
+                    id: c.id,
+                    code: c.code,
+                    connector: CONNECTOR_LABELS[c.connectorType],
+                    powerKw: c.ratedPowerKw,
+                    operational: c.operationalStatus.replace("_", " "),
+                    health: c.healthStatus,
+                    alerts: c.activeAlerts,
+                  })),
+                },
+              ]}
               selectedId={station.id}
             />
           ) : (

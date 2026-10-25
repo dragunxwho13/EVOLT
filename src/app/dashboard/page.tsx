@@ -18,8 +18,8 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title="Connector health overview"
-        description="Where the evidence says connectors need attention, and how current that evidence is."
+        title="Operations overview"
+        description="A control room for connector health, fleet coverage, alerts, and the evidence behind each action."
       />
       <Suspense fallback={<DashboardSkeleton />}>
         <DashboardContent />

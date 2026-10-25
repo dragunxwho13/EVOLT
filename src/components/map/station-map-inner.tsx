@@ -14,6 +14,15 @@ export interface MapPointInput {
   longitude: number;
   status: HealthStatus;
   detail?: string;
+  chargers?: Array<{
+    id: string;
+    code: string;
+    connector: string;
+    powerKw: number | null;
+    operational: string;
+    health: HealthStatus;
+    alerts: number;
+  }>;
 }
 
 export interface StationMapProps {
@@ -57,6 +66,39 @@ function tooltipNode(p: MapPointInput): HTMLElement {
   strong.textContent = p.name;
   el.append(strong, document.createElement("br"), `${HEALTH_SHORT_LABELS[p.status]}${p.detail ? ` · ${p.detail}` : ""}`);
   return el;
+}
+
+function popupNode(p: MapPointInput): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "evolt-map-popup";
+  const heading = document.createElement("strong");
+  heading.textContent = p.name;
+  root.append(heading);
+  const summary = document.createElement("p");
+  summary.className = "evolt-map-popup__summary";
+  summary.textContent = p.detail ?? `${p.chargers?.length ?? 0} chargers`;
+  root.append(summary);
+
+  if (p.chargers?.length) {
+    const list = document.createElement("ul");
+    list.className = "evolt-map-popup__list";
+    for (const charger of p.chargers) {
+      const item = document.createElement("li");
+      const title = document.createElement("span");
+      title.className = "evolt-map-popup__charger";
+      title.textContent = charger.code;
+      const meta = document.createElement("span");
+      meta.className = "evolt-map-popup__meta";
+      meta.textContent = `${charger.connector}${charger.powerKw !== null ? ` · ${charger.powerKw} kW` : ""} · ${charger.operational}`;
+      const health = document.createElement("span");
+      health.className = `evolt-map-popup__health evolt-map-popup__health--${charger.health}`;
+      health.textContent = HEALTH_SHORT_LABELS[charger.health] + (charger.alerts ? ` · ${charger.alerts} alert${charger.alerts === 1 ? "" : "s"}` : "");
+      item.append(title, meta, health);
+      list.append(item);
+    }
+    root.append(list);
+  }
+  return root;
 }
 
 /**
@@ -127,6 +169,7 @@ export default function StationMapInner({ points, selectedId, onSelect, origin, 
         alt: `${p.name} — ${HEALTH_SHORT_LABELS[p.status]}`,
       });
       marker.bindTooltip(tooltipNode(p), { direction: "top" });
+      marker.bindPopup(popupNode(p), { maxWidth: 320, minWidth: 240, className: "evolt-map-popup-container" });
       marker.on("click", () => propsRef.current.onSelect?.(p.id));
       marker.on("keypress", (e: L.LeafletKeyboardEvent) => {
         if (e.originalEvent.key === "Enter" || e.originalEvent.key === " ") propsRef.current.onSelect?.(p.id);

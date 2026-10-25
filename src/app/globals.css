@@ -191,6 +191,66 @@ body {
   border-color: var(--ink);
 }
 
+.evolt-map-popup-container .leaflet-popup-content-wrapper,
+.evolt-map-popup-container .leaflet-popup-tip {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.evolt-map-popup-container .leaflet-popup-content {
+  margin: 12px 14px;
+  min-width: 210px;
+}
+
+.evolt-map-popup__summary {
+  margin: 3px 0 8px;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+.evolt-map-popup__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evolt-map-popup__list li {
+  display: grid;
+  gap: 1px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.evolt-map-popup__charger {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.evolt-map-popup__meta,
+.evolt-map-popup__health {
+  color: var(--ink-muted);
+  font-size: 0.6875rem;
+}
+
+.evolt-map-popup__health--normal {
+  color: var(--ok);
+}
+
+.evolt-map-popup__health--monitor {
+  color: var(--watch);
+}
+
+.evolt-map-popup__health--inspection_recommended {
+  color: var(--inspect);
+}
+
+.evolt-map-popup__health--insufficient_data {
+  color: var(--unknown);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

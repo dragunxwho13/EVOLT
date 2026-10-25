@@ -27,6 +27,15 @@ export interface StationListItem {
   worstHealth: HealthStatus;
   healthCounts: Record<HealthStatus, number>;
   distanceKm: number | null;
+  chargers: Array<{
+    id: string;
+    code: string;
+    connectorType: ConnectorType;
+    ratedPowerKw: number | null;
+    operationalStatus: ChargerLite["operationalStatus"];
+    healthStatus: HealthStatus;
+    activeAlerts: number;
+  }>;
 }
 
 export interface StationListResult {
@@ -40,7 +49,9 @@ export interface StationListResult {
 
 const MAX_SCAN = 5000;
 
-type ChargerLite = Pick<Charger, "stationId" | "connectorType" | "ratedPowerKw" | "operationalStatus" | "healthStatus">;
+type ChargerLite = Pick<Charger, "id" | "stationId" | "code" | "connectorType" | "ratedPowerKw" | "operationalStatus" | "healthStatus"> & {
+  activeAlerts: number;
+};
 
 function chargerMatches(c: ChargerLite, q: StationQuery): boolean {
   if (q.connector && c.connectorType !== q.connector) return false;
@@ -73,6 +84,20 @@ export function summarizeStation(s: Station, all: ChargerLite[], matching: Charg
     worstHealth: worstStatus(all.map((c) => c.healthStatus)),
     healthCounts,
     distanceKm,
+    chargers: all
+      .map((c) => ({
+        id: c.id,
+        code: c.code,
+        connectorType: c.connectorType,
+        ratedPowerKw: c.ratedPowerKw,
+        operationalStatus: c.operationalStatus,
+        healthStatus: c.healthStatus,
+        activeAlerts: c.activeAlerts,
+      }))
+      .sort((a, b) => {
+        const healthOrder: Record<HealthStatus, number> = { inspection_recommended: 0, monitor: 1, insufficient_data: 2, normal: 3 };
+        return healthOrder[a.healthStatus] - healthOrder[b.healthStatus] || a.code.localeCompare(b.code);
+      }),
   };
 }
 
@@ -83,17 +108,22 @@ export async function listStations(q: StationQuery): Promise<StationListResult> 
     .select()
     .from(stations)
     .where(
-      text
-        ? or(ilike(stations.name, text), ilike(stations.code, text), ilike(stations.city, text), ilike(stations.address, text), ilike(stations.operator, text))
-        : undefined,
+      and(
+        q.includeSynthetic ? undefined : eq(stations.isSynthetic, false),
+        text
+          ? or(ilike(stations.name, text), ilike(stations.code, text), ilike(stations.city, text), ilike(stations.address, text), ilike(stations.operator, text))
+          : undefined,
+      ),
     )
     .orderBy(asc(stations.name))
     .limit(MAX_SCAN);
 
-  const chargerRows: ChargerLite[] = stationRows.length
+  const chargerRows = stationRows.length
     ? await db
         .select({
+          id: chargers.id,
           stationId: chargers.stationId,
+          code: chargers.code,
           connectorType: chargers.connectorType,
           ratedPowerKw: chargers.ratedPowerKw,
           operationalStatus: chargers.operationalStatus,
@@ -102,8 +132,17 @@ export async function listStations(q: StationQuery): Promise<StationListResult> 
         .from(chargers)
         .where(inArray(chargers.stationId, stationRows.map((s) => s.id)))
     : [];
+  const alertCounts = chargerRows.length
+    ? await db
+        .select({ chargerId: alerts.chargerId, n: count() })
+        .from(alerts)
+        .where(and(inArray(alerts.chargerId, chargerRows.map((c) => c.id)), inArray(alerts.status, ["open", "acknowledged"])))
+        .groupBy(alerts.chargerId)
+    : [];
+  const alertMap = new Map(alertCounts.map((a) => [a.chargerId, a.n]));
+  const enrichedChargerRows: ChargerLite[] = chargerRows.map((c) => ({ ...c, activeAlerts: alertMap.get(c.id) ?? 0 }));
   const byStation = new Map<string, ChargerLite[]>();
-  for (const c of chargerRows) {
+  for (const c of enrichedChargerRows) {
     const list = byStation.get(c.stationId) ?? [];
     list.push(c);
     byStation.set(c.stationId, list);
@@ -114,7 +153,7 @@ export async function listStations(q: StationQuery): Promise<StationListResult> 
 
   let items: StationListItem[] = [];
   for (const s of stationRows) {
-    const all = byStation.get(s.id) ?? [];
+    const all = enrichedChargerRows.filter((c) => c.stationId === s.id);
     const matching = all.filter((c) => chargerMatches(c, q));
     if (hasChargerFilter && matching.length === 0) continue;
     const hasCoords = isValidLatLng(s.latitude, s.longitude);
@@ -143,9 +182,12 @@ export interface StationDetail {
   chargers: (Charger & { activeAlerts: number })[];
 }
 
-export async function getStation(id: string): Promise<StationDetail> {
+export async function getStation(id: string, options: { includeSynthetic?: boolean } = {}): Promise<StationDetail> {
   const db = getDb();
-  const [station] = await db.select().from(stations).where(eq(stations.id, id));
+  const [station] = await db
+    .select()
+    .from(stations)
+    .where(and(eq(stations.id, id), options.includeSynthetic ? undefined : eq(stations.isSynthetic, false)));
   if (!station) throw notFound("Station");
   const rows = await db.select().from(chargers).where(eq(chargers.stationId, id)).orderBy(asc(chargers.code));
   const alertCounts = rows.length
@@ -158,4 +200,3 @@ export async function getStation(id: string): Promise<StationDetail> {
   const countMap = new Map(alertCounts.map((a) => [a.chargerId, a.n]));
   return { station, chargers: rows.map((c) => ({ ...c, activeAlerts: countMap.get(c.id) ?? 0 })) };
 }
-

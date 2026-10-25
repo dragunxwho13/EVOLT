@@ -1,6 +1,6 @@
 "use client";
 
-import { Cable, ChartLine, Database, FlaskConical, Gauge, MapPin, Menu, Route, Settings, TriangleAlert, X } from "lucide-react";
+import { Cable, ChartLine, Database, FlaskConical, Gauge, MapPin, Menu, Route, Settings, TriangleAlert, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ComponentType } from "react";
@@ -15,25 +15,21 @@ interface NavItem {
 
 export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: "Monitor",
+    label: "For drivers",
     items: [
-      { href: "/dashboard", label: "Overview", icon: Gauge },
+      { href: "/drivers", label: "Find a charge", icon: Zap },
+      { href: "/stations", label: "Station map", icon: MapPin },
+      { href: "/recommendations", label: "Find alternatives", icon: Route },
+    ],
+  },
+  {
+    label: "For operators",
+    items: [
+      { href: "/dashboard", label: "Operations overview", icon: Gauge },
       { href: "/alerts", label: "Alerts", icon: TriangleAlert },
       { href: "/chargers", label: "Chargers", icon: Cable },
-      { href: "/stations", label: "Station map", icon: MapPin },
-    ],
-  },
-  {
-    label: "Decide",
-    items: [
-      { href: "/recommendations", label: "Find alternatives", icon: Route },
       { href: "/model", label: "Learned model", icon: FlaskConical },
       { href: "/analytics", label: "Analysis method", icon: ChartLine },
-    ],
-  },
-  {
-    label: "Manage",
-    items: [
       { href: "/data", label: "Data import", icon: Database },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
@@ -78,13 +74,13 @@ export function NavFallback() {
   return (
     <>
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line px-3 py-5 lg:flex">
-        <Link href="/dashboard" className="mb-8 px-2.5">
+        <Link href="/drivers" className="mb-8 px-2.5">
           <Wordmark />
         </Link>
         <NavLinks pathname={null} />
       </aside>
       <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-ground/95 px-4 backdrop-blur lg:hidden">
-        <Link href="/dashboard">
+        <Link href="/drivers">
           <Wordmark />
         </Link>
       </div>
@@ -110,7 +106,7 @@ export function AppNav({ footer }: { footer?: React.ReactNode }) {
   return (
     <>
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line px-3 py-5 lg:flex">
-        <Link href="/dashboard" className="mb-8 px-2.5" aria-label="EVOLT overview">
+        <Link href="/drivers" className="mb-8 px-2.5" aria-label="EVOLT driver home">
           <Wordmark />
         </Link>
         <NavLinks pathname={pathname} />
@@ -118,7 +114,7 @@ export function AppNav({ footer }: { footer?: React.ReactNode }) {
       </aside>
 
       <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-ground/95 px-4 backdrop-blur lg:hidden">
-        <Link href="/dashboard" aria-label="EVOLT overview">
+        <Link href="/drivers" aria-label="EVOLT driver home">
           <Wordmark />
         </Link>
         <button
