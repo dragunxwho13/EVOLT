@@ -125,7 +125,8 @@ export function describeError(err: unknown): { title: string; message: string } 
       message: "EVOLT could not reach PostgreSQL. Check DATABASE_URL and that migrations have been applied.",
     };
   }
-  if (pgErrorCode(err) === "42P01") {
+  const databaseMessage = (unwrap(err) as { message?: unknown } | null)?.message;
+  if (pgErrorCode(err) === "42P01" && typeof databaseMessage === "string" && /relation .* does not exist|table .* does not exist/i.test(databaseMessage)) {
     return { title: "Database not migrated", message: "Tables are missing. Run `npm run db:migrate` against this database." };
   }
   return { title: "Something went wrong", message: "The data could not be loaded. Try again shortly." };

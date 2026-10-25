@@ -113,7 +113,15 @@ export async function listAlerts(q: AlertQuery) {
   if (q.severity) filters.push(eq(alerts.severity, q.severity));
   if (q.chargerId) filters.push(eq(alerts.chargerId, q.chargerId));
   const where = filters.length ? and(...filters) : undefined;
-  const total = (await db.select({ total: count() }).from(alerts).where(where))[0]?.total ?? 0;
+  const total =
+    (
+      await db
+        .select({ total: count() })
+        .from(alerts)
+        .innerJoin(chargers, eq(chargers.id, alerts.chargerId))
+        .innerJoin(stations, eq(stations.id, chargers.stationId))
+        .where(where)
+    )[0]?.total ?? 0;
   const rows = await db
     .select({
       alert: alerts,

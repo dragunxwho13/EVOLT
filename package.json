@@ -17,6 +17,7 @@
     "db:migrate:test": "tsx database/migrate.ts --test",
     "db:seed": "tsx --conditions=react-server database/seed/seed.ts",
     "db:seed:reset": "tsx --conditions=react-server database/seed/seed.ts --reset",
+    "db:import:vehicles": "node scripts/import-open-ev-vehicles.mjs",
     "check": "npm run lint && npm run typecheck && npm run test:unit && npm run build"
   },
   "dependencies": {

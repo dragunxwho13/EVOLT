@@ -465,6 +465,12 @@ Seed rows use `is_synthetic=true`, `source=synthetic-demo`, and `provenance=simu
 seed is idempotent and will not overwrite non-synthetic records with the same codes. Example
 files under `public/samples/` are also demonstration data; they are not field telemetry.
 
+Vehicle compatibility profiles can be refreshed from the external
+[OpenEV Data dataset](https://github.com/open-ev-data/open-ev-data-dataset) with
+`npm run db:import:vehicles`. That dataset contains vehicle specifications, not charging-station
+locations or charger telemetry, so the importer does not create stations, readings, alerts, or
+health scores.
+
 ## Datasets and import formats
 
 EVOLT accepts UTF-8 CSV files with headers and JSON arrays of objects or
