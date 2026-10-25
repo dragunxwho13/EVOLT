@@ -18,6 +18,8 @@
     "db:seed": "tsx --conditions=react-server database/seed/seed.ts",
     "db:seed:reset": "tsx --conditions=react-server database/seed/seed.ts --reset",
     "db:import:vehicles": "node scripts/import-open-ev-vehicles.mjs",
+    "db:import:ocm": "node scripts/import-open-charge-map.mjs",
+    "db:import:osm": "node scripts/import-osm-charging-stations.mjs",
     "check": "npm run lint && npm run typecheck && npm run test:unit && npm run build"
   },
   "dependencies": {
