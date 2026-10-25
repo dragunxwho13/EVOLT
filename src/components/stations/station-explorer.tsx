@@ -141,6 +141,15 @@ export function StationExplorer() {
       longitude: s.longitude!,
       status: s.worstHealth,
       detail: `${s.chargerCount} charger${s.chargerCount === 1 ? "" : "s"}`,
+      chargers: s.chargers.map((c) => ({
+        id: c.id,
+        code: c.code,
+        connector: CONNECTOR_LABELS[c.connectorType],
+        powerKw: c.ratedPowerKw,
+        operational: OPERATIONAL_LABELS[c.operationalStatus],
+        health: c.healthStatus,
+        alerts: c.activeAlerts,
+      })),
     }));
   const selected = items.find((s) => s.id === selectedId) ?? null;
   const hasFilters = Boolean(q || connector || minPowerKw || availability || health);
@@ -386,6 +395,19 @@ function StationPreview({ station, onClose }: { station: StationListItem; onClos
         {station.healthCounts.inspection_recommended} inspection recommended, {station.healthCounts.monitor} monitor,{" "}
         {station.healthCounts.normal} normal, {station.healthCounts.insufficient_data} with insufficient data.
       </p>
+      <ul className="mt-3 divide-y divide-line rounded-md border border-line">
+        {station.chargers.map((charger) => (
+          <li key={charger.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+            <span className="min-w-0">
+              <span className="num block font-medium text-ink">{charger.code}</span>
+              <span className="block truncate text-xs text-muted">
+                {CONNECTOR_LABELS[charger.connectorType]}{charger.ratedPowerKw !== null ? ` · ${formatNumber(charger.ratedPowerKw, 0)} kW` : ""}
+              </span>
+            </span>
+            <HealthBadge status={charger.healthStatus} short />
+          </li>
+        ))}
+      </ul>
       <div className="mt-3 flex flex-wrap gap-2">
         <Link href={`/stations/${station.id}`} className="text-sm font-medium text-signal underline-offset-4 hover:underline">
           View station and chargers

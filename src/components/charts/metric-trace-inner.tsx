@@ -49,7 +49,13 @@ export default function MetricTraceInner({ label, unit, points, baseline, thresh
   const unitSuffix = unit === "count" ? "" : ` ${unit}`;
 
   return (
-    <div style={{ height }} className="w-full" role="img" aria-label={`${label} over time, ${points.length} readings`}>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" aria-hidden="true">
+        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-ink" /> Recorded reading</span>
+        {baseline && <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[var(--trace-band)]" /> Usual starting period</span>}
+        {threshold !== null && <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rotate-45 bg-inspect" /> Needs a closer look</span>}
+      </div>
+      <div style={{ height }} className="w-full" role="img" aria-label={`${label} over time, ${points.length} readings`}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="var(--line)" strokeDasharray="2 4" vertical={false} />
@@ -130,6 +136,8 @@ export default function MetricTraceInner({ label, unit, points, baseline, thresh
           <Scatter dataKey="over" fill="var(--inspect)" shape="diamond" legendType="none" isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
+      <p className="text-xs text-muted">Read left to right: compare recent readings with the shaded starting period. Diamonds mark readings above the analysis threshold.</p>
     </div>
   );
 }

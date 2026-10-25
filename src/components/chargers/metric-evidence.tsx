@@ -13,6 +13,13 @@ export function MetricEvidence({ assessment, series }: { assessment: MetricAsses
   const threshold = b ? deviationThreshold(b.median, b.scale, def.minScale, ANALYSIS_PARAMS) : null;
   const canChart = assessment.metric === "fault_count" ? series.length >= ANALYSIS_PARAMS.minBaselinePoints : b !== null;
   const window = assessment.findings[0] ? { start: assessment.findings[0].windowStart, end: assessment.findings[0].windowEnd } : null;
+  const interpretation = assessment.findings[0]?.explanation
+    ? assessment.findings[0].explanation
+    : assessment.latest && b
+      ? assessment.latest.value > b.median
+        ? `${def.label} is currently above this charger's usual starting level. The chart shows whether that difference is persistent or part of a broader trend.`
+        : `${def.label} is currently at or below this charger's usual starting level. No concerning pattern was identified in the available readings.`
+      : "There is not enough history to explain this metric confidently yet.";
 
   return (
     <article className="rounded-lg border border-line bg-surface">
@@ -72,12 +79,19 @@ export function MetricEvidence({ assessment, series }: { assessment: MetricAsses
               Baseline from the first {b.n} readings ({formatDate(b.from)} to {formatDate(b.to)}).
             </p>
           )}
+          <div className="rounded-md border border-line bg-sunken px-3 py-2.5">
+            <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted">What this means</p>
+            <p className="mt-1 text-sm leading-6 text-ink">{interpretation}</p>
+          </div>
           {assessment.findings.length > 0 && (
             <ul className="space-y-2">
               {assessment.findings.map((f) => (
                 <li
                   key={f.rule}
-                  className={cn("rounded-md border-l-2 bg-sunken px-3 py-2", f.severity === "inspection_recommended" ? "border-inspect" : "border-watch")}
+                  className={cn(
+                    "rounded-md border bg-sunken px-3 py-2",
+                    f.severity === "inspection_recommended" ? "border-inspect/40" : "border-watch/40",
+                  )}
                 >
                   <p className="font-medium text-ink">{ALERT_RULE_LABELS[f.rule]}</p>
                   <p className="mt-0.5 text-muted">{f.explanation}</p>

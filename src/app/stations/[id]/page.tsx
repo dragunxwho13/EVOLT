@@ -93,7 +93,25 @@ async function StationContent({ params }: { params: Promise<{ id: string }> }) {
           {hasCoords ? (
             <StationMap
               className="h-64"
-              points={[{ id: station.id, name: station.name, latitude: station.latitude!, longitude: station.longitude!, status: worst }]}
+              points={[
+                {
+                  id: station.id,
+                  name: station.name,
+                  latitude: station.latitude!,
+                  longitude: station.longitude!,
+                  status: worst,
+                  detail: `${chargers.length} charger${chargers.length === 1 ? "" : "s"}`,
+                  chargers: chargers.map((c) => ({
+                    id: c.id,
+                    code: c.code,
+                    connector: CONNECTOR_LABELS[c.connectorType],
+                    powerKw: c.ratedPowerKw,
+                    operational: c.operationalStatus.replace("_", " "),
+                    health: c.healthStatus,
+                    alerts: c.activeAlerts,
+                  })),
+                },
+              ]}
               selectedId={station.id}
             />
           ) : (

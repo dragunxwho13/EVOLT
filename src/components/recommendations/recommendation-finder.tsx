@@ -275,7 +275,12 @@ export function RecommendationFinder({ references, vehicles }: { references: Ref
                           <span className="num grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line-strong text-sm">{r.rank}</span>
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-medium text-ink">{r.stationName}</span>
+                              <span>
+                                <span className="block font-medium text-ink">{r.stationName}</span>
+                                <span className="mt-0.5 block text-xs font-medium uppercase tracking-[0.08em] text-signal">
+                                  {r.rank === 1 ? "Best available match" : r.rank <= 3 ? "Strong alternative" : "Lower-priority fallback"}
+                                </span>
+                              </span>
                               <HealthBadge status={r.healthStatus} short />
                             </span>
                             <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
