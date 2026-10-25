@@ -1,0 +1,203 @@
+@import "tailwindcss";
+
+/*
+ * EVOLT design tokens.
+ * Chrome is deliberately monochrome slate; colour is reserved for health evidence,
+ * and every status colour is paired with a distinct glyph and a text label.
+ */
+:root {
+  --ground: #eceff2;
+  --surface: #ffffff;
+  --surface-sunken: #f5f7f9;
+  --ink: #14202b;
+  --ink-muted: #56636f;
+  --ink-faint: #8a96a1;
+  --line: #d6dce2;
+  --line-strong: #b9c2cb;
+  --signal: #2457c5;
+  --signal-ink: #ffffff;
+  --signal-soft: #e5ecfb;
+
+  --ok: #1e7a4c;
+  --ok-soft: #e3f2ea;
+  --watch: #9a6300;
+  --watch-soft: #fbf0d9;
+  --inspect: #b8322a;
+  --inspect-soft: #fbe6e4;
+  --unknown: #66727e;
+  --unknown-soft: #eaedf0;
+
+  --trace-band: rgba(36, 87, 197, 0.09);
+  --shadow-lift: 0 1px 0 rgba(20, 32, 43, 0.04), 0 8px 24px -12px rgba(20, 32, 43, 0.18);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0f161d;
+    --surface: #17212b;
+    --surface-sunken: #121b23;
+    --ink: #e6ebf0;
+    --ink-muted: #a2aeb9;
+    --ink-faint: #74818d;
+    --line: #2a3743;
+    --line-strong: #3a4956;
+    --signal: #7ea2f2;
+    --signal-ink: #0f161d;
+    --signal-soft: #1c2b47;
+
+    --ok: #5cc28d;
+    --ok-soft: #15301f;
+    --watch: #e2a93f;
+    --watch-soft: #33270f;
+    --inspect: #f07a70;
+    --inspect-soft: #3a1a18;
+    --unknown: #9aa6b2;
+    --unknown-soft: #222d37;
+
+    --trace-band: rgba(126, 162, 242, 0.12);
+    --shadow-lift: 0 1px 0 rgba(0, 0, 0, 0.2), 0 10px 28px -14px rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--ink-muted);
+  --color-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-signal: var(--signal);
+  --color-signal-ink: var(--signal-ink);
+  --color-signal-soft: var(--signal-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-watch: var(--watch);
+  --color-watch-soft: var(--watch-soft);
+  --color-inspect: var(--inspect);
+  --color-inspect-soft: var(--inspect-soft);
+  --color-unknown: var(--unknown);
+  --color-unknown-soft: var(--unknown-soft);
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --shadow-lift: var(--shadow-lift);
+  --ease-settle: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html {
+  background: var(--ground);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  font-feature-settings: "kern", "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Measurements use tabular figures so columns of values line up. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+::selection {
+  background: var(--signal-soft);
+}
+
+/* Disclosure panels (alert evidence, dialogs) animate open; collapsed by default. */
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms var(--ease-settle);
+}
+.reveal[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.reveal > * {
+  overflow: hidden;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--line) 0%, var(--surface-sunken) 50%, var(--line) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* "Insufficient data" is hatched so it never reads as a calm, healthy grey. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--unknown) 28%, transparent) 4px 5px
+  );
+}
+
+/* Leaflet integration */
+.leaflet-container {
+  font: inherit;
+  background: var(--surface-sunken);
+}
+.leaflet-container a {
+  color: var(--signal);
+}
+.evolt-pin {
+  background: none;
+  border: none;
+}
+.evolt-pin > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50% 50% 50% 6px;
+  transform: rotate(-45deg);
+  border: 2px solid var(--surface);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 160ms var(--ease-settle);
+}
+.evolt-pin > span > i {
+  transform: rotate(45deg);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+.evolt-pin > span[data-selected="true"] {
+  transform: rotate(-45deg) scale(1.28);
+  border-color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
