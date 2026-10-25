@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/primitives";
 import { ApiError, apiFetch } from "@/lib/http/client";
 
-/** Two-step removal of the synthetic demo records (imported data is never touched). */
+/** Two-step removal of the generated development records (imported data is never touched). */
 export function DemoDataControl({ synthetic }: { synthetic: number }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);

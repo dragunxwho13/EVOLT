@@ -32,7 +32,7 @@ export default function SettingsPage() {
             <li>It does not measure connectors. Health categories describe patterns in the recorded data only.</li>
             <li>An anomaly is a reason to inspect, not proof of degradation; missing data is never treated as healthy.</li>
             <li>Distances are straight-line. Driving distance, travel time and price are not estimated.</li>
-            <li>Synthetic demonstration records are labelled everywhere they appear and use simulated observations.</li>
+            <li>Development records are labelled everywhere they appear and use generated observations.</li>
             <li>Optional bench-sensor readings are supporting context and never change a charger&apos;s health status.</li>
           </ul>
         </Panel>

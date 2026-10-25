@@ -66,8 +66,8 @@ async function DashboardContent() {
           </ButtonLink>
         }
       >
-        Import a station and charger registry, then health observations, to see connector health here. For a demonstration,
-        run <code className="num">npm run db:seed</code> to load clearly labelled synthetic data.
+        Import a station and charger registry, then health observations, to see connector health here. For a local demonstration,
+        run <code className="num">npm run db:seed</code> to load clearly labelled development data.
       </EmptyState>
     );
   }
@@ -78,7 +78,7 @@ async function DashboardContent() {
       {o.chargers.synthetic > 0 && (
         <Notice tone="warn">
           {o.chargers.synthetic === o.chargers.total ? "All" : `${o.chargers.synthetic} of ${o.chargers.total}`} chargers on this
-          page are <strong>synthetic demonstration records</strong> with simulated observations. Their locations do not
+          page are <strong>development records</strong> with generated observations. Their locations do not
           correspond to real charging stations.
         </Notice>
       )}

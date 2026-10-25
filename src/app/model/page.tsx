@@ -88,7 +88,7 @@ async function ModelContent() {
             points and by more than two fold-standard-deviations.
           </li>
           <li>
-            Results describe this dataset. The supplied file shows signs of being synthetic (see the import notes), so these accuracies are
+            Results describe this dataset. The supplied file is generated development data (see the import notes), so these accuracies are
             not evidence about real chargers.
           </li>
         </ul>
