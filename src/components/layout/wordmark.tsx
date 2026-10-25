@@ -21,7 +21,7 @@ export function Wordmark() {
       <EvoltMark />
       <span className="flex flex-col leading-none">
         <span className="text-[1.15rem] font-bold tracking-[0.08em] text-ink">EVOLT</span>
-        <span className="mt-1 text-[0.6875rem] text-muted">Connector health</span>
+        <span className="mt-1 text-[0.6875rem] text-muted">Charging intelligence</span>
       </span>
     </span>
   );

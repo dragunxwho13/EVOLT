@@ -1,4 +1,6 @@
-# EVOLT data dictionary
+# Data dictionary
+
+[← Back to README](../README.md)
 
 Everything EVOLT stores, what each field means, and the formats it accepts on import.
 Example files live in [`public/samples/`](../public/samples) and are downloadable from the
@@ -71,7 +73,7 @@ One row per measurement.
 | `metric` | yes | measurement, parameter, quantity | One of the metrics below (unit-suffixed names such as `contact_resistance_mohm` accepted). |
 | `value` | yes | reading, measurement_value, val | A number. Empty values are **rejected** — never treated as zero. |
 | `unit` | yes | units, uom | Converted to the metric's canonical unit; unknown units are rejected. |
-| `provenance` | no | data_type, origin, data_origin | `observed`, `derived`, `estimated`, `simulated`. If missing, the value chosen in the import form is used. |
+| `provenance` | no | data_type, origin, data_origin | `observed`, `derived`, `estimated`, `sample` (also `demo`, `test`). If missing, the value chosen in the import form is used. |
 | `source` | no | source_name, instrument, device | Free text, max 120 chars. |
 
 Row outcomes reported in the preview and summary:
@@ -101,9 +103,9 @@ An identical file (same SHA-256) can only be imported successfully once.
 | `observed` | Directly measured or logged by equipment |
 | `derived` | Calculated from other observed values |
 | `estimated` | Approximated or inferred, not measured |
-| `simulated` | Generated synthetically for demonstration or testing |
+| `sample` (stored as `simulated`) | Example or unverified data — not field measurements. Shown as “Demo / sample data”. |
 
-All seeded demonstration data and the example files use `simulated`.
+The demo stations, the example files and the supplied session dataset use this value.
 
 ## Database tables
 
@@ -118,7 +120,8 @@ All seeded demonstration data and the example files use `simulated`.
 | `vehicle_profiles` | Connector compatibility and DC power limit for recommendations | unique `code` |
 | `sensor_readings` | Optional bench-sensor readings (supporting context only) | unique (`device_id`, `sensor`, `recorded_at`) |
 | `charging_sessions` | Imported sessions with all numeric values and labels | unique (`charger_id`, `started_at`) |
-| `model_runs` | Cross-validated training reports per label | — |
+| `model_runs` | Cross-validated training reports and fitted models per label (and follow-up tests) | — |
+| `insight_reviews` | Workflow status (reviewed / resolved / dismissed) and note for company action items | primary key `key` |
 
 Enumerations: `connector_type`, `operational_status`, `health_status`
 (`normal`, `monitor`, `inspection_recommended`, `insufficient_data`), `provenance`,
@@ -128,12 +131,12 @@ Enumerations: `connector_type`, `operational_status`, `health_status`
 
 ## Sensor ingestion API
 
-`POST /api/sensor-readings` (admin token required)
+`POST /api/sensor-readings` (a write: open mode, or the admin token in token mode)
 
 ```json
 {
   "deviceId": "bench-uno-1",
-  "chargerCode": "SYN-01-C1",
+  "chargerCode": "DEMO-01-C1",
   "readings": [{ "sensor": "temp_c", "value": 27.4, "unit": "°C", "recordedAt": "2026-10-24T09:00:00Z" }]
 }
 ```

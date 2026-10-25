@@ -30,7 +30,7 @@ export const DATASET_FIELDS: Record<DatasetKind, FieldDef[]> = {
     { key: "metric", label: "Metric", required: true, aliases: ["measurement", "parameter", "quantity"], description: "contact_resistance, voltage_drop, fault_count or temperature_rise." },
     { key: "value", label: "Value", required: true, aliases: ["reading", "measurement_value", "val"], description: "Numeric value. Empty values are rejected, never treated as zero." },
     { key: "unit", label: "Unit", required: true, aliases: ["units", "uom"], description: "Unit of the value; converted to the metric's canonical unit." },
-    { key: "provenance", label: "Provenance", required: false, aliases: ["data_type", "origin", "data_origin"], description: "observed, derived, estimated or simulated." },
+    { key: "provenance", label: "Provenance", required: false, aliases: ["data_type", "origin", "data_origin"], description: "observed, derived, estimated or sample." },
     { key: "source", label: "Source", required: false, aliases: ["source_name", "instrument", "device"], description: "Free-text source, e.g. instrument or system name." },
   ],
   sessions: [

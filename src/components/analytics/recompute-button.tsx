@@ -49,7 +49,7 @@ export function RecomputeButton() {
           <span className="text-inspect">
             {state.message}{" "}
             {state.unlock && (
-              <Link className="underline" href="/settings">
+              <Link className="underline" href="/company/settings">
                 Settings
               </Link>
             )}

@@ -76,6 +76,7 @@ export const recommendationQuerySchema = z
     minPowerKw: opt(z.coerce.number().min(0).max(1500)),
     radiusKm: z.preprocess(blankToUndefined, z.coerce.number().min(1).max(500).default(25)),
     includeInspection: z.preprocess(blankToUndefined, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
+    availableOnly: z.preprocess(blankToUndefined, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
     limit: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(50).default(10)),
   })
   .strict()
@@ -157,3 +158,29 @@ export function searchParamsToObject(params: URLSearchParams | Record<string, st
   }
   return out;
 }
+
+/** Workflow decision on a company action item. "open" clears a previous decision. */
+export const insightReviewSchema = z.object({
+  key: z.string().trim().min(3).max(200),
+  status: z.enum(["open", "reviewed", "resolved", "dismissed"]),
+  note: z.string().trim().max(500).optional().nullable(),
+});
+
+export const performanceQuerySchema = z
+  .object({
+    chargingMode: opt(z.string().trim().min(1).max(60)),
+    area: opt(z.string().trim().min(1).max(60)),
+    format: opt(z.enum(["json", "csv"])),
+  })
+  .strict();
+
+export const predictionRequestSchema = z
+  .object({
+    target: z.string().trim().min(1).max(200),
+    values: z
+      .record(z.string().trim().min(1).max(80), z.number().finite())
+      .refine((v) => Object.keys(v).length > 0 && Object.keys(v).length <= 60, "Provide between 1 and 60 input values."),
+    area: z.string().trim().max(60).optional().nullable(),
+    chargingMode: z.string().trim().max(60).optional().nullable(),
+  })
+  .strict();

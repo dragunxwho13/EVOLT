@@ -21,7 +21,23 @@ const nextConfig: NextConfig = {
     },
   },
   async redirects() {
-    return [{ source: "/", destination: "/dashboard", permanent: false }];
+    // Old routes from before the driver/company split keep working.
+    const moved: [string, string][] = [
+      ["/dashboard", "/company"],
+      ["/alerts", "/company/alerts"],
+      ["/alerts/:id", "/company/alerts/:id"],
+      ["/chargers", "/company/chargers"],
+      ["/chargers/:id", "/company/chargers/:id"],
+      ["/stations", "/driver"],
+      ["/stations/:id", "/driver/stations/:id"],
+      ["/recommendations", "/driver"],
+      ["/drivers", "/driver"],
+      ["/model", "/company/model"],
+      ["/analytics", "/company/method"],
+      ["/data", "/company/data"],
+      ["/settings", "/company/settings"],
+    ];
+    return moved.map(([source, destination]) => ({ source, destination, permanent: false }));
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

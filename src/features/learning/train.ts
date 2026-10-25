@@ -168,6 +168,103 @@ export function trainTarget(target: string, samples: Sample[], features: string[
   };
 }
 
+export interface SessionRow {
+  values: Record<string, number>;
+  labels: Record<string, string>;
+  area: string | null;
+  chargingMode: string | null;
+}
+
+export interface TrainingOutcome {
+  reports: TargetReport[];
+  skipped: { target: string; reason: string }[];
+  rows: number;
+}
+
+export function variantKey(target: string, excluded: string): string {
+  return `${target}::without::${excluded}`;
+}
+
+function ranges(vectors: Record<string, number>[], features: string[]): Record<string, { min: number; max: number }> {
+  const out: Record<string, { min: number; max: number }> = {};
+  for (const f of features) {
+    if (f.includes("=")) continue;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const v of vectors) {
+      const x = v[f]!;
+      if (x < min) min = x;
+      if (x > max) max = x;
+    }
+    out[f] = { min, max };
+  }
+  return out;
+}
+
+/**
+ * Trains every labelled target in a set of sessions (pure; shared by the app and the CLI).
+ * When a label is reproduced by a single measurement, a follow-up test trains it again without
+ * that measurement, answering whether the label can be anticipated from operating conditions.
+ */
+export function trainSessionTargets(rows: readonly SessionRow[], now: Date = new Date()): TrainingOutcome {
+  const labelledRows = rows.filter((r) => Object.keys(r.labels).length > 0);
+  const targets = [...new Set(labelledRows.flatMap((r) => Object.keys(r.labels)))].sort();
+  const outcome: TrainingOutcome = { reports: [], skipped: [], rows: labelledRows.length };
+  for (const target of targets) {
+    const labelled = labelledRows.filter((r) => r.labels[target]);
+    const counts = new Map<string, number>();
+    for (const r of labelled) counts.set(r.labels[target]!, (counts.get(r.labels[target]!) ?? 0) + 1);
+    if (labelled.length < TRAINING.minRows) {
+      outcome.skipped.push({ target, reason: `Only ${labelled.length} labelled sessions; at least ${TRAINING.minRows} are needed.` });
+      continue;
+    }
+    if (counts.size < 2) {
+      outcome.skipped.push({ target, reason: "Every session has the same label, so there is nothing to learn." });
+      continue;
+    }
+    if ([...counts.values()].some((n) => n < TRAINING.folds)) {
+      outcome.skipped.push({ target, reason: `Some classes have fewer than ${TRAINING.folds} sessions, too few to test fairly.` });
+      continue;
+    }
+    const { features, vectors } = buildFeatures(labelled);
+    if (!features.length) {
+      outcome.skipped.push({ target, reason: "No numeric measurements are present in every labelled session." });
+      continue;
+    }
+    const samples = vectors.map((x, i) => ({ x, y: labelled[i]!.labels[target]! }));
+    const report = { ...trainTarget(target, samples, features, now), featureRanges: ranges(vectors, features) };
+    report.question = `Can ${humanize(target).toLowerCase()} be predicted from the session's recorded values?`;
+    outcome.reports.push(report);
+
+    if (report.learnable && report.best === "threshold" && report.thresholdModel) {
+      const excluded = report.thresholdModel.feature;
+      const reduced = features.filter((f) => f !== excluded);
+      if (reduced.length) {
+        const without = trainTarget(
+          variantKey(target, excluded),
+          samples.map((s) => ({ x: Object.fromEntries(reduced.map((f) => [f, s.x[f]!])), y: s.y })),
+          reduced,
+          now,
+        );
+        const question = `Can ${humanize(target).toLowerCase()} be anticipated without measuring ${humanize(excluded).toLowerCase()}?`;
+        const answer = without.learnable
+          ? `Yes: without ${humanize(excluded).toLowerCase()}, the best model still reaches ${(without.evaluations.find((e) => e.model === without.best)!.accuracy * 100).toFixed(1)}% on unseen sessions.`
+          : `Without ${humanize(excluded).toLowerCase()}, the best model reaches ${(Math.max(...without.evaluations.slice(1).map((e) => e.accuracy)) * 100).toFixed(1)}% on unseen sessions — no better than always guessing the most common class (${(without.baselineAccuracy * 100).toFixed(1)}%). The other recorded conditions carry no usable signal, so ${humanize(excluded).toLowerCase()} has to be measured.`;
+        outcome.reports.push({
+          ...without,
+          targetLabel: `${humanize(target)} — without ${humanize(excluded).toLowerCase()}`,
+          verdict: answer,
+          variantOf: target,
+          excludedFeatures: [excluded],
+          question,
+          featureRanges: ranges(vectors, reduced),
+        });
+      }
+    }
+  }
+  return outcome;
+}
+
 export function predict(model: FittedModel, x: Record<string, number>): string {
   return model.kind === "threshold" ? predictThreshold(model, x) : predictLogistic(model, x);
 }

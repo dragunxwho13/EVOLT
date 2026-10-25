@@ -12,6 +12,10 @@ import { GET as datasetsGET, POST as datasetsPOST } from "@/app/api/datasets/rou
 import { POST as previewPOST } from "@/app/api/datasets/preview/route";
 import { DELETE as syntheticDELETE } from "@/app/api/datasets/synthetic/route";
 import { GET as healthGET } from "@/app/api/health/route";
+import { GET as performanceGET } from "@/app/api/company/performance/route";
+import { GET as insightsGET } from "@/app/api/insights/route";
+import { PUT as reviewPUT } from "@/app/api/insights/review/route";
+import { POST as predictPOST } from "@/app/api/models/predict/route";
 import { GET as modelsGET } from "@/app/api/models/route";
 import { GET as recommendationsGET } from "@/app/api/recommendations/route";
 import { POST as sensorPOST } from "@/app/api/sensor-readings/route";
@@ -209,7 +213,19 @@ describe("API and persistence", () => {
     ).data;
     expect(incl.recommendations.map((x) => x.chargerCode)).toEqual(["EX-01-B"]);
     expect(incl.recommendations[0]!.limitations.join(" ")).toMatch(/recommends inspecting/);
+    // EX-01-B is "in use", so asking for available chargers only is a hard constraint that removes it.
+    const avail = (
+      await body<Data<{ recommendations: unknown[]; excluded: Record<string, number>; hardConstraints: string[]; preferences: string[] }>>(
+        await recommendationsGET(get(`/api/recommendations?fromCharger=${ch!.id}&connector=Type2&includeInspection=true&availableOnly=true`)),
+      )
+    ).data;
+    expect(avail.recommendations).toEqual([]);
+    expect(avail.excluded.not_available).toBe(1);
+    expect(avail.hardConstraints.length).toBeGreaterThan(3);
+    expect(avail.preferences.join(" ")).toMatch(/Price/);
     expect((await recommendationsGET(get("/api/recommendations"))).status).toBe(400);
+    // Unknown query parameters are rejected rather than silently ignored.
+    expect((await recommendationsGET(get(`/api/recommendations?fromCharger=${ch!.id}&latitude=1`))).status).toBe(400);
   });
 
   it("stores optional sensor readings without affecting health", async () => {
@@ -231,7 +247,8 @@ describe("API and persistence", () => {
   });
 
   it("lists import history and overview figures from stored data", async () => {
-    const hist = (await body<Data<{ status: string }[]>>(await datasetsGET(new NextRequest("http://localhost/api/datasets")))).data;
+    expect((await datasetsGET(new NextRequest("http://localhost/api/datasets"))).status).toBe(401);
+    const hist = (await body<Data<{ status: string }[]>>(await datasetsGET(new NextRequest("http://localhost/api/datasets", { headers: ADMIN })))).data;
     expect(hist.filter((h) => h.status === "completed")).toHaveLength(3);
     const o = (await body<Data<{ chargers: { total: number }; stations: { total: number } }>>(await overviewGET())).data;
     expect(o.chargers.total).toBe(3);
@@ -260,14 +277,96 @@ describe("API and persistence", () => {
     expect(stability.learnable).toBe(false);
 
     expect(await getDb().select().from(chargingSessions)).toHaveLength(1000);
-    expect(await getDb().select().from(modelRuns)).toHaveLength(2);
+    // Two labels plus the follow-up test "power-loss category without power loss".
+    expect(await getDb().select().from(modelRuns)).toHaveLength(3);
     const [ch] = await getDb().select().from(chargers).where(eq(chargers.code, "ST-07-FAST"));
     expect(ch).toMatchObject({ connectorType: "Unknown", chargingMode: "Fast" });
     expect(ch!.healthSummary?.historical).toBe(true);
 
     const models = (await body<Data<{ stats: { sessions: number }; reports: { target: string }[] }>>(await modelsGET())).data;
     expect(models.stats.sessions).toBe(1000);
-    expect(models.reports.map((r) => r.target).sort()).toEqual(["reduced_power_loss_category", "voltage_stability_category"]);
+    expect(models.reports.map((r) => r.target).sort()).toEqual([
+      "reduced_power_loss_category",
+      "reduced_power_loss_category::without::power_loss",
+      "voltage_stability_category",
+    ]);
+    const without = c.training.targets.find((t) => t.target.includes("::without::"))!;
+    expect(without.learnable).toBe(false);
+  });
+
+  it("classifies a session with the stored model and refuses unsupported predictions", async () => {
+    const predict = (b: unknown) => predictPOST(new Request("http://localhost/api/models/predict", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }));
+    const cases: [number, string][] = [[1.0, "Low"], [3.0, "Medium"], [4.5, "High"]];
+    for (const [v, expected] of cases) {
+      const res = await predict({ target: "reduced_power_loss_category", values: { power_loss: v } });
+      expect(res.status).toBe(200);
+      const r = (await body<Data<{ predicted: string; accuracy: number; warnings: string[]; explanation: string }>>(res)).data;
+      expect(r.predicted).toBe(expected);
+      expect(r.accuracy).toBeGreaterThan(0.89);
+      expect(r.warnings).toEqual([]);
+      expect(r.explanation).toMatch(/power_loss/);
+    }
+    const far = (await body<Data<{ warnings: string[] }>>(await predict({ target: "reduced_power_loss_category", values: { power_loss: 40 } }))).data;
+    expect(far.warnings.join(" ")).toMatch(/outside the range seen in training/);
+    expect((await predict({ target: "reduced_power_loss_category", values: { voltage_level: 230 } })).status).toBe(400);
+    const unlearnable = await predict({ target: "voltage_stability_category", values: { voltage_fluctuation: 3 } });
+    expect(unlearnable.status).toBe(400);
+    expect((await body<{ error: { message: string } }>(unlearnable)).error.message).toMatch(/does not make predictions/);
+    expect((await predict({ target: "nope", values: { x: 1 } })).status).toBe(404);
+    expect((await predict({ target: "reduced_power_loss_category", values: { power_loss: "high" } })).status).toBe(400);
+  });
+
+  it("computes station performance from stored sessions, with filters and a CSV export", async () => {
+    const res = await performanceGET(get("/api/company/performance"));
+    expect(res.status).toBe(200);
+    const p = (await body<Data<{ fleet: { sessions: number; highLoss: { count: number; of: number }; lossExceedsConsumed: { count: number }; energyExceedsBattery: { count: number } }; stations: unknown[]; filters: { chargingModes: string[] } }>>(res)).data;
+    // Independently computed with pandas from the source CSV.
+    expect(p.fleet.sessions).toBe(1000);
+    expect(p.fleet.highLoss).toMatchObject({ count: 256, of: 1000 });
+    expect(p.fleet.lossExceedsConsumed.count).toBe(35);
+    expect(p.fleet.energyExceedsBattery.count).toBe(302);
+    expect(p.stations).toHaveLength(19);
+    expect(p.filters.chargingModes).toEqual(["Conventional", "Fast", "V2G"]);
+    const fast = (await body<Data<{ fleet: { sessions: number }; filters: { chargingModes: string[] } }>>(await performanceGET(get("/api/company/performance?chargingMode=Fast")))).data;
+    expect(fast.fleet.sessions).toBe(352);
+    expect(fast.filters.chargingModes).toHaveLength(3);
+    const csv = await performanceGET(get("/api/company/performance?format=csv"));
+    expect(csv.headers.get("content-type")).toMatch(/text\/csv/);
+    const lines = (await csv.text()).trim().split("\r\n");
+    expect(lines[0]).toMatch(/^station,sessions,/);
+    expect(lines).toHaveLength(20);
+    expect((await performanceGET(get("/api/company/performance?unknown=1"))).status).toBe(400);
+  });
+
+  it("lists evidence-backed action items and persists workflow decisions", async () => {
+    const list = async () => (await body<Data<{ items: { key: string; priority: string; category: string; evidence: string[]; rule: string; action: string; workflow: { status: string; evidenceChanged: boolean; note: string | null } }[] }>>(await insightsGET())).data.items;
+    const items = await list();
+    const battery = items.find((i) => i.key === "energy-exceeds-battery:fleet")!;
+    expect(battery).toMatchObject({ priority: "medium", category: "data_quality", workflow: { status: "new" } });
+    expect(battery.evidence.join(" ")).toMatch(/302 of 1000/);
+    expect(items.some((i) => i.key.startsWith("loss-exceeds-consumed:"))).toBe(true);
+    for (const i of items) {
+      expect(i.evidence.length).toBeGreaterThan(0);
+      expect(i.rule.length).toBeGreaterThan(10);
+      expect(i.action.length).toBeGreaterThan(10);
+    }
+
+    const put = (b: unknown, headers: Record<string, string> = ADMIN) =>
+      reviewPUT(new Request("http://localhost/api/insights/review", { method: "PUT", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(b) }));
+    expect((await put({ key: battery.key, status: "reviewed" }, {})).status).toBe(401);
+    expect((await put({ key: battery.key, status: "reviewed" }, { ...ADMIN, origin: "https://evil.example", host: "localhost" })).status).toBe(401);
+    const saved = await put({ key: battery.key, status: "reviewed", note: "Asked the provider about time units" });
+    expect(saved.status).toBe(200);
+    let after = (await list()).find((i) => i.key === battery.key)!;
+    expect(after.workflow).toMatchObject({ status: "reviewed", note: "Asked the provider about time units", evidenceChanged: false });
+    // Workflow status survives recomputation; reopening clears it.
+    expect((await put({ key: battery.key, status: "open" })).status).toBe(200);
+    after = (await list()).find((i) => i.key === battery.key)!;
+    expect(after.workflow.status).toBe("new");
+    expect((await put({ key: "nope:1", status: "reviewed" })).status).toBe(404);
+    expect((await put({ key: battery.key, status: "fixed" })).status).toBe(400);
+    const alertItem = items.find((i) => i.key.startsWith("alert:"));
+    if (alertItem) expect((await put({ key: alertItem.key, status: "reviewed" })).status).toBe(400);
   });
 
   it("in open mode accepts same-site writes without a token and refuses cross-site ones", async () => {

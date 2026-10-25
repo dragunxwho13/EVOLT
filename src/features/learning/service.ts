@@ -1,8 +1,9 @@
 import "server-only";
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { notFound, validationError } from "@/lib/errors";
 import { chargingSessions, modelRuns } from "@/lib/db/schema";
-import { buildFeatures, predict, TRAINING, trainTarget } from "./train";
+import { predict, trainSessionTargets } from "./train";
 import type { FittedModel, TargetReport } from "./types";
 
 export interface TrainingSummary {
@@ -21,40 +22,13 @@ export async function trainModels(now: Date = new Date()): Promise<TrainingSumma
     .select({ values: chargingSessions.values, labels: chargingSessions.labels, area: chargingSessions.area, chargingMode: chargingSessions.chargingMode })
     .from(chargingSessions)
     .where(sql`${chargingSessions.labels} <> '{}'::jsonb`);
-  const targets = [...new Set(rows.flatMap((r) => Object.keys(r.labels)))].sort();
-  const summary: TrainingSummary = { rows: rows.length, targets: [], skipped: [] };
-
-  for (const target of targets) {
-    const labelled = rows.filter((r) => r.labels[target]);
-    const counts = new Map<string, number>();
-    for (const r of labelled) counts.set(r.labels[target]!, (counts.get(r.labels[target]!) ?? 0) + 1);
-    if (labelled.length < TRAINING.minRows) {
-      summary.skipped.push({ target, reason: `Only ${labelled.length} labelled sessions; at least ${TRAINING.minRows} are needed.` });
-      continue;
-    }
-    if (counts.size < 2) {
-      summary.skipped.push({ target, reason: "Every session has the same label, so there is nothing to learn." });
-      continue;
-    }
-    if ([...counts.values()].some((n) => n < TRAINING.folds)) {
-      summary.skipped.push({ target, reason: `Some classes have fewer than ${TRAINING.folds} sessions, too few to test fairly.` });
-      continue;
-    }
-    const { features, vectors } = buildFeatures(labelled);
-    if (!features.length) {
-      summary.skipped.push({ target, reason: "No numeric measurements are present in every labelled session." });
-      continue;
-    }
-    const report = trainTarget(
-      target,
-      vectors.map((x, i) => ({ x, y: labelled[i]!.labels[target]! })),
-      features,
-      now,
-    );
-    await db.insert(modelRuns).values({ target, rows: report.rows, learnable: report.learnable, result: report });
+  const outcome = trainSessionTargets(rows, now);
+  const summary: TrainingSummary = { rows: outcome.rows, targets: [], skipped: outcome.skipped };
+  for (const report of outcome.reports) {
+    await db.insert(modelRuns).values({ target: report.target, rows: report.rows, learnable: report.learnable, result: report });
     const chosen = report.evaluations.find((e) => e.model === report.best)!;
     summary.targets.push({
-      target,
+      target: report.target,
       label: report.targetLabel,
       learnable: report.learnable,
       accuracy: chosen.accuracy,
@@ -119,7 +93,7 @@ export interface ChargerModelView {
 
 /** Applies each learnable model to one charger's sessions. */
 export async function chargerModelViews(chargerId: string): Promise<ChargerModelView[]> {
-  const reports = (await latestReports()).filter((r) => r.learnable && r.finalModel);
+  const reports = (await latestReports()).filter((r) => r.learnable && r.finalModel && !r.variantOf);
   if (!reports.length) return [];
   const sessions = await getDb()
     .select()
@@ -159,4 +133,75 @@ export async function chargerModelViews(chargerId: string): Promise<ChargerModel
       recent,
     };
   });
+}
+
+export interface PredictionInput {
+  target: string;
+  values: Record<string, number>;
+  area?: string | null;
+  chargingMode?: string | null;
+}
+
+export interface PredictionResult {
+  target: string;
+  targetLabel: string;
+  predicted: string;
+  modelName: string;
+  /** Cross-validated accuracy of this model on unseen sessions. */
+  accuracy: number;
+  baselineAccuracy: number;
+  explanation: string;
+  warnings: string[];
+  trainedAt: string;
+}
+
+/**
+ * Classifies one session with the stored model for `target`. Refuses when the label was not
+ * learnable (no prediction is better than a guess dressed up as one) or when inputs are missing.
+ */
+export async function predictSession(input: PredictionInput): Promise<PredictionResult> {
+  const report = (await latestReports()).find((r) => r.target === input.target);
+  if (!report) throw notFound("Model for this label");
+  if (!report.learnable || !report.finalModel) {
+    throw validationError(`${report.targetLabel} could not be learned from the data, so EVOLT does not make predictions for it.`);
+  }
+  const model = report.finalModel;
+  const needed = featuresOf(model);
+  const missing = needed.filter((f) => !f.includes("=") && !Number.isFinite(input.values[f]));
+  if (missing.length) throw validationError(`Missing or invalid value for: ${missing.join(", ")}.`, { missing });
+  const x = vectorFor({ values: input.values, area: input.area ?? null, chargingMode: input.chargingMode ?? null }, needed);
+  if (!x) throw validationError("The inputs do not match what the model needs.");
+
+  const warnings: string[] = [];
+  for (const f of needed) {
+    const range = report.featureRanges?.[f];
+    const v = input.values[f];
+    if (range && v !== undefined && (v < range.min || v > range.max)) {
+      warnings.push(`${f} = ${v} is outside the range seen in training (${range.min.toFixed(2)}–${range.max.toFixed(2)}); treat this prediction with extra caution.`);
+    }
+  }
+  const predicted = predict(model, x);
+  const chosen = report.evaluations.find((e) => e.model === report.best)!;
+  let explanation: string;
+  if (model.kind === "threshold") {
+    const v = x[model.feature]!;
+    const idx = model.order.indexOf(predicted);
+    const lo = idx > 0 ? model.cuts[idx - 1] : null;
+    const hi = idx < model.cuts.length ? model.cuts[idx] : null;
+    const range = lo === null ? `≤ ${hi!.toFixed(2)}` : hi === null ? `> ${lo.toFixed(2)}` : `between ${lo.toFixed(2)} and ${hi.toFixed(2)}`;
+    explanation = `${model.feature} = ${v} is ${range}, which the learned rule assigns to “${predicted}”.`;
+  } else {
+    explanation = `Multinomial logistic regression over ${model.features.length} inputs assigned the highest probability to “${predicted}”.`;
+  }
+  return {
+    target: report.target,
+    targetLabel: report.targetLabel,
+    predicted,
+    modelName: chosen.name,
+    accuracy: chosen.accuracy,
+    baselineAccuracy: report.baselineAccuracy,
+    explanation,
+    warnings,
+    trainedAt: report.trainedAt,
+  };
 }

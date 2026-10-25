@@ -46,15 +46,42 @@ export const HEALTH_SHORT_LABELS: Record<HealthStatus, string> = {
   insufficient_data: "Insufficient",
 };
 
+/** Health in words a driver can act on (the same evidence categories, phrased for choosing a charger). */
+export const DRIVER_HEALTH_LABELS: Record<HealthStatus, string> = {
+  normal: "No reported issues",
+  insufficient_data: "Not yet assessed",
+  monitor: "Under observation",
+  inspection_recommended: "Inspection advised",
+};
+
+/** Availability for drivers: "unknown" is said plainly, never shown as available. */
+export const DRIVER_AVAILABILITY_LABELS: Record<OperationalStatus, string> = {
+  available: "Available",
+  in_use: "In use",
+  offline: "Offline",
+  unknown: "Availability unknown",
+};
+
 /** How a value came to exist. Displayed next to every observation. */
 export const PROVENANCES = ["observed", "derived", "estimated", "simulated"] as const;
 export type Provenance = (typeof PROVENANCES)[number];
 
+/**
+ * Display labels. The stored value "simulated" is shown as "Demo / sample data": records with
+ * it are generated or unverified example data and must never be presented as field telemetry.
+ */
+export const PROVENANCE_LABELS: Record<Provenance, string> = {
+  observed: "Measured",
+  derived: "Derived",
+  estimated: "Estimated",
+  simulated: "Demo / sample data",
+};
+
 export const PROVENANCE_DESCRIPTIONS: Record<Provenance, string> = {
   observed: "Directly measured or logged by equipment",
-  derived: "Calculated from other observed values",
+  derived: "Calculated from other measured values",
   estimated: "Approximated or inferred, not measured",
-  simulated: "Generated for development or testing",
+  simulated: "Example or unverified data — not field measurements",
 };
 
 export const ALERT_STATUSES = ["open", "acknowledged", "resolved", "dismissed"] as const;

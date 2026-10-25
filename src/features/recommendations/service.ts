@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { asc, count, eq, inArray } from "drizzle-orm";
 import type { ConnectorType } from "@/config/domain";
 import { isValidLatLng } from "@/features/station-discovery/geo";
 import { getDb } from "@/lib/db/client";
@@ -38,7 +38,7 @@ export async function getRecommendations(q: RecommendationQuery): Promise<Recomm
       })
       .from(chargers)
       .innerJoin(stations, eq(stations.id, chargers.stationId))
-      .where(and(eq(chargers.id, q.fromCharger), eq(chargers.isSynthetic, false)));
+      .where(eq(chargers.id, q.fromCharger));
     if (!row) throw notFound("Reference charger");
     reference = { chargerId: row.id, chargerCode: row.code, stationName: row.stationName, healthStatus: row.healthStatus };
     referenceConnector = row.connectorType;
@@ -83,11 +83,13 @@ export async function getRecommendations(q: RecommendationQuery): Promise<Recomm
       connectorType: chargers.connectorType,
       ratedPowerKw: chargers.ratedPowerKw,
       operationalStatus: chargers.operationalStatus,
+      operationalStatusAt: chargers.operationalStatusAt,
       healthStatus: chargers.healthStatus,
+      isDemo: stations.isSynthetic,
+      city: stations.city,
     })
     .from(chargers)
-    .innerJoin(stations, eq(stations.id, chargers.stationId))
-    .where(and(eq(chargers.isSynthetic, false), eq(stations.isSynthetic, false)));
+    .innerJoin(stations, eq(stations.id, chargers.stationId));
 
   const alertCounts = await db
     .select({ chargerId: alerts.chargerId, n: count() })
@@ -95,7 +97,11 @@ export async function getRecommendations(q: RecommendationQuery): Promise<Recomm
     .where(inArray(alerts.status, ["open", "acknowledged"]))
     .groupBy(alerts.chargerId);
   const alertMap = new Map(alertCounts.map((a) => [a.chargerId, a.n]));
-  const candidates: CandidateCharger[] = rows.map((r) => ({ ...r, activeAlerts: alertMap.get(r.chargerId) ?? 0 }));
+  const candidates: CandidateCharger[] = rows.map(({ operationalStatusAt, ...r }) => ({
+    ...r,
+    statusAt: operationalStatusAt ? operationalStatusAt.toISOString() : null,
+    activeAlerts: alertMap.get(r.chargerId) ?? 0,
+  }));
 
   const result = recommend(candidates, {
     origin,
@@ -104,6 +110,7 @@ export async function getRecommendations(q: RecommendationQuery): Promise<Recomm
     vehicleMaxKw,
     radiusKm: q.radiusKm,
     includeInspection: q.includeInspection,
+    availableOnly: q.availableOnly,
     excludeChargerId: q.fromCharger,
     limit: q.limit,
   });

@@ -30,7 +30,7 @@ export function HealthDistribution({ counts, total }: { counts: Record<HealthSta
       <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
         {ORDER.map((s) => (
           <li key={s}>
-            <Link href={`/chargers?health=${s}`} className="group block rounded-md focus-visible:outline-offset-4">
+            <Link href={`/company/chargers?health=${s}`} className="group block rounded-md focus-visible:outline-offset-4">
               <span className={cn("flex items-center gap-1.5 text-sm", TEXT[s])}>
                 <HealthGlyph status={s} />
                 <span className="text-muted group-hover:text-ink">{HEALTH_LABELS[s]}</span>

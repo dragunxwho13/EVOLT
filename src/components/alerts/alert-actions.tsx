@@ -68,11 +68,11 @@ export function AlertActions({ alertId, status }: { alertId: string; status: Ale
   return (
     <div className="space-y-3">
       <div>
-        <label htmlFor="alert-note" className="text-[0.8125rem] font-medium text-muted">
+        <label htmlFor={`alert-note-${alertId}`} className="text-[0.8125rem] font-medium text-muted">
           Note (optional, saved with the status change)
         </label>
         <textarea
-          id="alert-note"
+          id={`alert-note-${alertId}`}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           maxLength={500}
@@ -92,7 +92,7 @@ export function AlertActions({ alertId, status }: { alertId: string; status: Ale
         <p role="status" className={message.tone === "ok" ? "text-sm text-ok" : "text-sm text-inspect"}>
           {message.text}{" "}
           {message.needsUnlock && (
-            <Link href="/settings" className="underline">
+            <Link href="/company/settings" className="underline">
               Go to Settings
             </Link>
           )}

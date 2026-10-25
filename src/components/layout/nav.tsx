@@ -1,6 +1,6 @@
 "use client";
 
-import { Cable, ChartLine, Database, FlaskConical, Gauge, MapPin, Menu, Route, Settings, TriangleAlert, X, Zap } from "lucide-react";
+import { ArrowLeftRight, BarChart3, Cable, ChartLine, Database, FlaskConical, Gauge, ListChecks, Menu, Settings, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ComponentType } from "react";
@@ -13,38 +13,71 @@ interface NavItem {
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
 }
 
+/** Company workspace navigation, grouped by the question an employee is asking. */
 export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: "For drivers",
+    label: "Monitor",
     items: [
-      { href: "/drivers", label: "Find a charge", icon: Zap },
-      { href: "/stations", label: "Station map", icon: MapPin },
-      { href: "/recommendations", label: "Find alternatives", icon: Route },
+      { href: "/company", label: "Overview", icon: Gauge },
+      { href: "/company/actions", label: "Action items", icon: ListChecks },
+      { href: "/company/performance", label: "Performance", icon: BarChart3 },
     ],
   },
   {
-    label: "For operators",
+    label: "Fleet",
     items: [
-      { href: "/dashboard", label: "Operations overview", icon: Gauge },
-      { href: "/alerts", label: "Alerts", icon: TriangleAlert },
-      { href: "/chargers", label: "Chargers", icon: Cable },
-      { href: "/model", label: "Learned model", icon: FlaskConical },
-      { href: "/analytics", label: "Analysis method", icon: ChartLine },
-      { href: "/data", label: "Data import", icon: Database },
-      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/company/chargers", label: "Chargers", icon: Cable },
+      { href: "/company/alerts", label: "Health alerts", icon: TriangleAlert },
+    ],
+  },
+  {
+    label: "Data & models",
+    items: [
+      { href: "/company/model", label: "Learned model", icon: FlaskConical },
+      { href: "/company/method", label: "Analysis method", icon: ChartLine },
+      { href: "/company/data", label: "Data import", icon: Database },
+      { href: "/company/settings", label: "Settings", icon: Settings },
     ],
   },
 ];
 
+function isActive(pathname: string | null, href: string) {
+  if (pathname === null) return false;
+  // The overview matches only itself; other items also match their sub-pages.
+  if (href === "/company") return pathname === "/company";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function WorkspaceLabel() {
+  return (
+    <span className="mb-6 ml-2.5 inline-flex w-fit items-center rounded-full border border-line-strong px-2 py-0.5 text-xs font-medium text-muted">
+      Company workspace
+    </span>
+  );
+}
+
+function SwitchLink({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <Link
+      href="/driver"
+      onClick={onNavigate}
+      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-surface/60 hover:text-ink"
+    >
+      <ArrowLeftRight aria-hidden className="h-4 w-4 text-faint" />
+      Switch to driver view
+    </Link>
+  );
+}
+
 function NavLinks({ pathname, onNavigate }: { pathname: string | null; onNavigate?: () => void }) {
   return (
-    <nav aria-label="Main" className="flex flex-col gap-5">
+    <nav aria-label="Company workspace" className="flex flex-col gap-5">
       {NAV_GROUPS.map((group) => (
         <div key={group.label}>
           <p className="mb-1.5 px-2.5 text-xs font-medium text-faint">{group.label}</p>
           <ul className="flex flex-col gap-0.5">
             {group.items.map(({ href, label, icon: Icon }) => {
-              const active = pathname !== null && (pathname === href || pathname.startsWith(`${href}/`));
+              const active = isActive(pathname, href);
               return (
                 <li key={href}>
                   <Link
@@ -74,13 +107,14 @@ export function NavFallback() {
   return (
     <>
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line px-3 py-5 lg:flex">
-        <Link href="/drivers" className="mb-8 px-2.5">
+        <Link href="/" className="mb-3 px-2.5" aria-label="EVOLT home">
           <Wordmark />
         </Link>
+        <WorkspaceLabel />
         <NavLinks pathname={null} />
       </aside>
       <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-ground/95 px-4 backdrop-blur lg:hidden">
-        <Link href="/drivers">
+        <Link href="/" aria-label="EVOLT home">
           <Wordmark />
         </Link>
       </div>
@@ -106,15 +140,19 @@ export function AppNav({ footer }: { footer?: React.ReactNode }) {
   return (
     <>
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line px-3 py-5 lg:flex">
-        <Link href="/drivers" className="mb-8 px-2.5" aria-label="EVOLT driver home">
+        <Link href="/" className="mb-3 px-2.5" aria-label="EVOLT home">
           <Wordmark />
         </Link>
+        <WorkspaceLabel />
         <NavLinks pathname={pathname} />
-        <div className="mt-auto px-2.5 pt-6">{footer}</div>
+        <div className="mt-auto space-y-4 pt-6">
+          <SwitchLink />
+          <div className="px-2.5">{footer}</div>
+        </div>
       </aside>
 
       <div className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-ground/95 px-4 backdrop-blur lg:hidden">
-        <Link href="/drivers" aria-label="EVOLT driver home">
+        <Link href="/" aria-label="EVOLT home">
           <Wordmark />
         </Link>
         <button
@@ -159,8 +197,12 @@ export function AppNav({ footer }: { footer?: React.ReactNode }) {
             <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
+        <WorkspaceLabel />
         <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
-        <div className="mt-auto px-2.5 pt-6">{footer}</div>
+        <div className="mt-auto space-y-4 pt-6">
+          <SwitchLink onNavigate={() => setOpen(false)} />
+          <div className="px-2.5">{footer}</div>
+        </div>
       </div>
     </>
   );

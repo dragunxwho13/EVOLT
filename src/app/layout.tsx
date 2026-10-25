@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { Suspense, type ReactNode } from "react";
-import { AppNav, NavFallback } from "@/components/layout/nav";
+import type { ReactNode } from "react";
 import "./globals.css";
 
 const plexSans = localFont({
@@ -24,9 +23,9 @@ const plexMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: { default: "EVOLT", template: "%s · EVOLT" },
+  title: { default: "EVOLT — EV charging intelligence", template: "%s · EVOLT" },
   description:
-    "EVOLT — an explainable intelligence platform for EV charging-connector health and degradation analysis. Research prototype; not a safety certification.",
+    "EVOLT helps EV drivers find a suitable charger and helps charging operators see which chargers need attention, with the evidence behind every recommendation.",
 };
 
 export const viewport: Viewport = {
@@ -36,14 +35,7 @@ export const viewport: Viewport = {
   ],
 };
 
-function PrototypeNote() {
-  return (
-    <p className="text-xs leading-relaxed text-faint">
-      Public discovery for drivers. Operator diagnostics live in the operations workspace.
-    </p>
-  );
-}
-
+/** Shell-free root: the entry page, the driver app and the company workspace each own their layout. */
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
@@ -54,14 +46,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         >
           Skip to content
         </a>
-        <div className="lg:flex">
-          <Suspense fallback={<NavFallback />}>
-            <AppNav footer={<PrototypeNote />} />
-          </Suspense>
-          <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
-            <div className="mx-auto max-w-[1280px]">{children}</div>
-          </main>
-        </div>
+        {children}
       </body>
     </html>
   );

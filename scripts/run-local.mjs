@@ -6,12 +6,14 @@
  * 2. Uses your own PostgreSQL if .env.local points at one; otherwise starts a private
  *    PostgreSQL 17 instance (npm package "embedded-postgres") stored in ./.evolt/postgres.
  * 3. Applies database migrations.
- * 4. Loads the clearly labelled synthetic demo data the first time the database is empty.
+ * 4. Loads the clearly labelled demo stations the first time the database is empty, then the
+ *    supplied charging-session dataset (imported once, through the normal import pipeline).
  * 5. Builds the app when the code has changed since the last build.
  * 6. Starts EVOLT and opens it in your browser. Press Ctrl+C to stop everything.
  *
  * Options:  --rebuild   force a fresh production build
  *           --no-seed   never load demo data
+ *           --no-dataset  never load the supplied session dataset
  *           --no-open   do not open the browser
  *           --port N    preferred port (default 3000; the next free port is used if busy)
  */
@@ -341,11 +343,15 @@ async function main() {
       // idempotent, so this also completes a seed that stopped half-way.
       if (state.real_stations === 0 && state.observations === 0) {
         run(
-          "Loading the synthetic demonstration data...",
+          "Loading the demo stations...",
           [tsxCli, "--conditions=react-server", "database/seed/seed.ts"],
           env,
         );
       }
+    }
+    if (!flag("--no-dataset")) {
+      // The supplied session dataset is the main data source; loaded once, models kept current.
+      run("Checking the charging-session dataset...", [tsxCli, "--conditions=react-server", "database/seed/dataset.ts"], env);
     }
 
     if (flag("--rebuild") || buildIsStale()) {
@@ -384,6 +390,8 @@ async function main() {
   if (await waitForHealth(url, 60_000)) {
     console.log("");
     say(`EVOLT is running at ${url}`);
+    say(`  Driver view:        ${url}/driver`);
+    say(`  Company workspace:  ${url}/company`);
     if (env.EVOLT_EDIT_MODE === "token") say("Editing needs the admin token from .env.local (Settings → Unlock editing).");
     else say("Editing is open: import data and manage alerts directly, no token needed.");
     say("Keep this window open. Press Ctrl+C (or close the window) to stop.");

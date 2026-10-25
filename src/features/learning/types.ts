@@ -65,4 +65,11 @@ export interface TargetReport {
   /** Sample of the threshold feature per true class, for plotting. */
   distribution: { label: string; values: number[] }[];
   trainedAt: string;
+  /** Set on a follow-up test: the same label, trained without the listed measurement(s). */
+  variantOf?: string;
+  excludedFeatures?: string[];
+  /** The question this report answers, in plain words. */
+  question?: string;
+  /** Observed range of each numeric feature, used to warn about out-of-range predictions. */
+  featureRanges?: Record<string, { min: number; max: number }>;
 }

@@ -17,13 +17,12 @@
     "db:migrate:test": "tsx database/migrate.ts --test",
     "db:seed": "tsx --conditions=react-server database/seed/seed.ts",
     "db:seed:reset": "tsx --conditions=react-server database/seed/seed.ts --reset",
-    "db:import:vehicles": "node scripts/import-open-ev-vehicles.mjs",
-    "db:import:registry": "node scripts/import-osm-charging-stations.mjs",
-    "check": "npm run lint && npm run typecheck && npm run test:unit && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run test:unit && npm run build",
+    "model:train": "tsx scripts/train-model.ts",
+    "db:seed:dataset": "tsx --conditions=react-server database/seed/dataset.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
-    "leaflet": "^1.9.4",
     "lucide-react": "^1.61.0",
     "next": "16.4.3",
     "papaparse": "^5.7.0",
@@ -37,7 +36,6 @@
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
-    "@types/leaflet": "^1.9.22",
     "@types/node": "^22.20.5",
     "@types/papaparse": "^5.5.2",
     "@types/pg": "^8.23.1",

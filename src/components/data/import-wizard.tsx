@@ -4,7 +4,7 @@ import { CircleAlert, FileUp, Info, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent } from "react";
-import { PROVENANCES, PROVENANCE_DESCRIPTIONS, type DatasetKind, type Provenance } from "@/config/domain";
+import { PROVENANCES, PROVENANCE_DESCRIPTIONS, PROVENANCE_LABELS, type DatasetKind, type Provenance } from "@/config/domain";
 import { Button, ButtonLink, Field, inputClass } from "@/components/ui/primitives";
 import { DATASET_FIELDS, type ColumnMapping } from "@/features/data-ingestion/fields";
 import type { CommitResult, PreviewResult } from "@/features/data-ingestion/service";
@@ -258,7 +258,7 @@ export function ImportWizard({ maxBytes }: { maxBytes: number }) {
               </ul>
             )}
             {error.forbidden && (
-              <Link href="/settings" className="mt-1 inline-block text-signal underline">
+              <Link href="/company/settings" className="mt-1 inline-block text-signal underline">
                 Open Settings → Editing access
               </Link>
             )}
@@ -365,7 +365,7 @@ export function ImportWizard({ maxBytes }: { maxBytes: number }) {
                   >
                     {PROVENANCES.map((p) => (
                       <option key={p} value={p}>
-                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                        {PROVENANCE_LABELS[p]}
                       </option>
                     ))}
                   </select>
@@ -661,11 +661,11 @@ function ImportDone({ result, onAgain }: { result: CommitResult; onAgain: () => 
         </div>
       )}
       <div className="flex flex-wrap gap-2 pt-1">
-        <ButtonLink href="/dashboard" variant="primary">
+        <ButtonLink href="/company" variant="primary">
           Open overview
         </ButtonLink>
-        <ButtonLink href="/chargers">View chargers</ButtonLink>
-        {result.training && result.training.targets.length > 0 && <ButtonLink href="/model">See model results</ButtonLink>}
+        <ButtonLink href="/company/chargers">View chargers</ButtonLink>
+        {result.training && result.training.targets.length > 0 && <ButtonLink href="/company/model">See model results</ButtonLink>}
         <Button variant="ghost" onClick={onAgain}>
           Import another file
         </Button>

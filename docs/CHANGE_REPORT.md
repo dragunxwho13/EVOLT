@@ -1,0 +1,104 @@
+# EVOLT — change and verification report (October 2026)
+
+Base: `EVOLT-main.zip` (the previous project ZIP). It was audited, its baseline test results
+recorded, and then it was improved in place. The architecture is unchanged: Next.js 16 App
+Router, PostgreSQL with Drizzle, Zod, and the existing analysis, ingestion and learning modules.
+
+## 1. Baseline before changes (measured)
+
+| Check | Result |
+|---|---|
+| Typecheck, lint, unit tests (78), production build | Passed |
+| Integration tests | **17 / 19** (import-history auth; open edit mode) |
+| Browser tests | **3 / 17** |
+| Fresh one-click install | Imports and edits **disabled** (`writesEnabled: false`) |
+
+## 2. Bugs found and fixed
+
+| # | Bug (reproduced) | Fix |
+|---|---|---|
+| 1 | Editing lock returned. Open mode required both `EVOLT_EDIT_MODE=open` and `EVOLT_LOCAL_DB=true`, but the launcher wrote only the second, so every import failed | Explicit mode always wins; unset means open for the launcher's local DB, token otherwise. Regression test added |
+| 2 | Demo stations, chargers and alerts were hidden by `isSynthetic` filters while the overview still listed them, so its links led to “Nothing here” | Filters removed; demo records are shown with a **Demo** tag |
+| 3 | Migration `0003` was missing from `_journal.json`, so it never ran | Replaced by a registered `0003` (demo renaming + `insight_reviews` table) |
+| 4 | OSM importer: `capacity` (vehicle count) read as kW; `socket:type2_combo` recorded as AC Type 2; `:output` value used as charger count | Importer removed with all OpenStreetMap code |
+| 5 | Type 1 mapped to CCS1 in both importers | Both importers removed |
+| 6 | Data attribution stripped (“Imported station registry”, rename migration) | Removed with the importers |
+| 7 | Map legend (health colours) did not match markers (availability colours) | Map removed |
+| 8 | “What this means” called any value above the median “above usual” and ignored the analysis result | The text now reflects the analysis outcome, including the unstable-baseline note |
+| 9 | “Best available match” label shown even for chargers with an inspection advised | Replaced by an evidence-only explanation sentence |
+| 10 | Station listing grouped chargers in O(stations × chargers) | Uses the existing map lookup |
+| 11 | README errors: wrong default mode, non-existent POST route, curl example with wrong parameters (400), missing migration | README rewritten and checked against the code |
+| 12 | The old false-positive alert (ST-09-FAST) stayed open with “high” priority after the analysis stopped finding it | Alerts whose pattern is no longer detected become **low** priority “confirm and close” items |
+| 13 | Testing 19 stations at 95 % would flag about one by chance (Station 5, 25/64 poor-stability sessions) | Bonferroni-adjusted Wilson intervals; the rule text says so |
+| 14 | Driver page rewrote the URL with default values on load (test race) | Defaults omitted; replace only when changed |
+| 15 | Alert note fields had duplicate HTML ids when several alerts were shown on one page | Unique per alert |
+| 16 | Re-import preview showed 0 stations / empty labels (earlier version) | Kept fixed; regression test retained |
+
+## 3. Removed and why
+
+- **OpenStreetMap, Leaflet, map components and styles**, the `NEXT_PUBLIC_MAP_*` variables, the
+  tile-provider setting, the OSM station importer and the OSM docs: removed as required. Distance
+  discovery now uses Haversine distance on coordinates in the database.
+- **OpenEV vehicle importer**: an external API whose output was not used anywhere in the UI.
+- **`PRODUCT.md`**: it stated that public views must hide demo data (the cause of bug 2), and its
+  dark-palette claim did not match the app.
+- **Map-centric station explorer and the old recommendation finder**: replaced by the driver
+  finder.
+- **“Synthetic” / “Simulated” wording in the UI**: demo records are “Demo”, and provenance shows
+  as “Demo / sample data”. Records stay flagged in the database and are never shown as live.
+
+## 4. Added or improved
+
+- **Entry page with role choice**; separate **driver** (top bar) and **company** (sidebar)
+  layouts with switch links; old URLs redirect.
+- **Driver**:
+  - location from the browser (with permission), a city in the data, or typed coordinates;
+  - radius, connector, power and availability as hard filters;
+  - explained ranking that separates requirements from preferences;
+  - sorting, compare up to 4 chargers, a driver station page, honest empty states;
+  - stations without a location listed separately.
+- **Company**:
+  - an overview built around action items;
+  - the **Action items** page (evidence, rule, why, next step, priority, confidence) with a
+    persisted review workflow and a flag when evidence changes after review;
+  - the **Performance** page with filters, sorting, intervals and CSV export;
+  - computed chart takeaways, KPI definitions, and stated reasons for metrics that are not shown.
+- **Data and model**:
+  - session metrics checked against pandas;
+  - data-quality rules (loss > consumed, energy > battery, indistinct charging types);
+  - follow-up model test (loss category without power loss is **not** predictable);
+  - prediction endpoint with validation and out-of-range warnings, and a *Categorise a session*
+    form;
+  - offline `npm run model:train` writing `models/session-models.json`;
+  - the dataset is loaded automatically on first start, through the normal import pipeline.
+
+## 5. Verification (tests actually run on 25 Oct 2026, Linux sandbox)
+
+| Check | Result |
+|---|---|
+| `npm run lint`, `npm run typecheck` | Passed |
+| Unit tests | **92 / 92** |
+| Integration tests (real PostgreSQL) | **22 / 22** |
+| Production build | Passed |
+| Browser tests (Playwright, desktop + mobile) | **20 / 20**, run twice in a row |
+| Clean first run of the launcher (no `.env.local`, no database, no build) | Passed: demo stations and dataset loaded, 3 model reports, editing open, a same-site write accepted |
+| Every page loaded in a browser with the console watched | 11 routes, no errors |
+| No “synthetic” / “simulated” text on any main page | Passed (automated) |
+| Analytics against independent calculation | Energy, durations, power, loss share, label counts, inconsistent records, tariff: match pandas. Wilson interval and normal quantiles: match SciPy |
+| Model results against scikit-learn | 91.7 % / 37.0 % / 41.5 % consistent with scikit-learn (91.2–91.9 %, 31–36 %, 40–41 %) |
+
+### Not verified or partially verified
+
+- **Windows**: not run on Windows. The launcher logic is shared with the tested Linux path, but
+  the `.bat` file and the Windows PostgreSQL binaries were not executed here.
+- **Real browser geolocation on a phone**: tested with Playwright's simulated permission (granted
+  and denied), not on a physical device.
+- **Token mode in the browser**: covered by unit and integration tests, not by a browser test.
+- **Dark mode and screen readers**: colour tokens exist for dark mode and the pages use semantic
+  markup, but neither was reviewed manually.
+
+### Blocked by the data, not by code
+
+- Real station locations for the dataset, live availability, price, opening hours, downtime,
+  utilisation and session outcomes are not in the supplied data, so they are not shown.
+- Multi-company authorisation is not implemented; the role switch is demo mode only.

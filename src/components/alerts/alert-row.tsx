@@ -32,7 +32,7 @@ export function AlertRow({ summary, children }: { summary: ReactNode; children: 
 
 export function AlertDetailLink({ id }: { id: string }) {
   return (
-    <Link href={`/alerts/${id}`} className="text-sm font-medium text-signal hover:underline">
+    <Link href={`/company/alerts/${id}`} className="text-sm font-medium text-signal hover:underline">
       Open full alert and change status
     </Link>
   );
