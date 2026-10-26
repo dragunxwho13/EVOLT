@@ -4,10 +4,24 @@ import { MetricTrace } from "@/components/charts/metric-trace";
 import { HealthBadge } from "@/components/ui/status";
 import { cn } from "@/lib/utils/cn";
 import { deviationThreshold } from "@/features/anomaly-detection/assess-metric";
-import type { MetricAssessment } from "@/types/analysis";
-import { formatDate, formatMetricValue, formatNumber } from "@/lib/utils/format";
+import type { MetricAssessment, ServiceForecast } from "@/types/analysis";
+import { formatDate, formatMetricValue, formatNumber, formatPercent } from "@/lib/utils/format";
+import type { ReactNode } from "react";
 
-export function MetricEvidence({ assessment, series }: { assessment: MetricAssessment; series: { t: number; value: number }[] }) {
+export function MetricEvidence({
+  assessment,
+  series,
+  markers = [],
+  limitControl,
+}: {
+  assessment: MetricAssessment;
+  series: { t: number; value: number }[];
+  markers?: { t: number; label: string }[];
+  /** Optional editor for the service limit (contact resistance only). */
+  limitControl?: ReactNode;
+}) {
+  const forecast = assessment.forecast ?? null;
+  const tc = assessment.temperatureCorrection ?? null;
   const def = METRICS[assessment.metric];
   const b = assessment.baseline;
   const threshold = b ? deviationThreshold(b.median, b.scale, def.minScale, ANALYSIS_PARAMS) : null;
@@ -47,6 +61,8 @@ export function MetricEvidence({ assessment, series }: { assessment: MetricAsses
               baseline={b ? { median: b.median, from: b.from, to: b.to } : null}
               threshold={threshold}
               highlightWindow={window}
+              limit={forecast ? forecast.limit : null}
+              markers={markers}
             />
           ) : (
             <div className="grid h-[180px] place-items-center rounded-md border border-dashed border-line-strong px-6 text-center text-sm text-muted">
@@ -82,6 +98,16 @@ export function MetricEvidence({ assessment, series }: { assessment: MetricAsses
               Baseline from the first {b.n} readings ({formatDate(b.from)} to {formatDate(b.to)}).
             </p>
           )}
+          {tc && (
+            <p className={cn("rounded border px-2 py-1 text-xs", tc.applied ? "border-signal/40 text-signal" : "border-line text-muted")}>
+              {tc.applied
+                ? `Temperature-corrected to ${tc.referenceC} °C (readings taken at ${formatNumber(tc.minTempC ?? 0, 0)}–${formatNumber(tc.maxTempC ?? 0, 0)} °C). Values shown are corrected.`
+                : tc.withTemperature > 0
+                  ? `Not temperature-corrected: only ${tc.withTemperature} of ${tc.readings} readings record a temperature.`
+                  : "Not temperature-corrected: no contact temperature recorded."}
+            </p>
+          )}
+          {forecast && <ForecastBlock forecast={forecast} metric={assessment.metric} limitControl={limitControl} />}
           <div className="rounded-md border border-line bg-sunken px-3 py-2.5">
             <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted">What this means</p>
             <p className="mt-1 text-sm leading-6 text-ink">{interpretation}</p>
@@ -122,5 +148,39 @@ export function MetricEvidence({ assessment, series }: { assessment: MetricAsses
         </div>
       </div>
     </article>
+  );
+}
+
+function ForecastBlock({ forecast: f, metric, limitControl }: { forecast: ServiceForecast; metric: MetricAssessment["metric"]; limitControl?: ReactNode }) {
+  const tone =
+    f.status === "already_above" ? "border-inspect/50" : f.status === "projected" && !f.beyondHorizon ? "border-watch/50" : "border-line";
+  const headline =
+    f.status === "already_above"
+      ? "Already at or above the service limit"
+      : f.status === "projected"
+        ? f.beyondHorizon
+          ? "Service limit more than a year away"
+          : f.expectedDate
+            ? `Service limit likely around ${formatDate(f.expectedDate)}`
+            : `Service limit not before ${formatDate(f.earliestDate)}`
+        : f.status === "not_rising"
+          ? "No clear rise — no service date forecast"
+          : "Not enough readings to forecast";
+  return (
+    <section aria-label="Service-limit forecast" className={cn("rounded-md border bg-surface px-3 py-2.5", tone)} data-testid={`forecast-${metric}`}>
+      <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted">Service forecast</p>
+      <p className="mt-1 font-semibold text-ink">{headline}</p>
+      {f.status === "projected" && !f.beyondHorizon && (
+        <p className="num mt-0.5 text-sm text-muted">
+          {formatPercent(f.confidence)} range: {formatDate(f.earliestDate)} – {f.latestDate ? formatDate(f.latestDate) : "later than a year"}
+        </p>
+      )}
+      <p className="mt-1 text-sm leading-6 text-muted">{f.explanation}</p>
+      <p className="mt-1 text-xs text-faint">
+        Limit {formatMetricValue(metric, f.limit)} ({f.limitSource === "operator" ? "set by the operator" : "default: baseline + 50%"}). A forecast extends the
+        recent rate; maintenance, load or weather can change it.
+      </p>
+      {limitControl && <div className="mt-2 border-t border-line pt-2">{limitControl}</div>}
+    </section>
   );
 }

@@ -6,6 +6,7 @@ import {
   DATASET_KINDS,
   HEALTH_STATUSES,
   KNOWN_CONNECTOR_TYPES,
+  MAINTENANCE_ACTIONS,
   OPERATIONAL_STATUSES,
   PROVENANCES,
 } from "@/config/domain";
@@ -165,6 +166,22 @@ export const insightReviewSchema = z.object({
   status: z.enum(["open", "reviewed", "resolved", "dismissed"]),
   note: z.string().trim().max(500).optional().nullable(),
 });
+
+/** A piece of work recorded on a connector. */
+export const maintenanceCreateSchema = z
+  .object({
+    performedAt: z.coerce.date().refine((d) => !Number.isNaN(d.getTime()), "Invalid date."),
+    action: z.enum(MAINTENANCE_ACTIONS),
+    note: z.string().trim().max(500).optional().nullable(),
+  })
+  .strict();
+
+/** Operator-set contact-resistance service limit in mΩ; null restores the default. */
+export const serviceLimitSchema = z
+  .object({
+    contactResistanceLimitMohm: z.number().positive().max(100).nullable(),
+  })
+  .strict();
 
 export const performanceQuerySchema = z
   .object({

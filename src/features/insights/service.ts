@@ -4,7 +4,7 @@ import { loadSessions } from "@/features/sessions/service";
 import { getDb } from "@/lib/db/client";
 import { alerts, chargers, insightReviews, stations, type InsightReviewStatus } from "@/lib/db/schema";
 import { notFound, validationError } from "@/lib/errors";
-import { alertInsights, coverageInsights, sessionInsights, sortInsights, type Insight, type Priority } from "./rules";
+import { alertInsights, coverageInsights, forecastInsights, sessionInsights, sortInsights, type Insight, type Priority } from "./rules";
 
 export type WorkflowStatus = "new" | InsightReviewStatus | "acknowledged";
 
@@ -66,6 +66,7 @@ async function computeInsights(): Promise<Insight[]> {
   ]);
   return sortInsights([
     ...alertInsights(alertRows),
+    ...forecastInsights(chargerRows, new Date()),
     ...sessionInsights(sessions),
     ...coverageInsights(chargerRows.map(({ summary, ...c }) => ({ ...c, historical: Boolean(summary?.historical) }))),
   ]);

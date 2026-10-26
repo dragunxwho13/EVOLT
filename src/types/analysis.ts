@@ -3,6 +3,53 @@ import type { AlertRule, AlertSeverity, HealthStatus, MetricKey } from "@/config
 export interface ObservationInput {
   observedAt: Date;
   value: number;
+  /** Contact temperature when the reading was taken, if recorded (°C). */
+  temperatureC?: number | null;
+}
+
+export interface TemperatureCorrection {
+  /** True when every reading had a usable temperature and values were restated. */
+  applied: boolean;
+  referenceC: number;
+  coefficientPerC: number;
+  readings: number;
+  withTemperature: number;
+  minTempC: number | null;
+  maxTempC: number | null;
+  /** Largest change correction made to a single reading, as a fraction of its raw value. */
+  maxAdjustment: number | null;
+  explanation: string;
+}
+
+export type ForecastStatus = "projected" | "already_above" | "not_rising" | "insufficient_data";
+
+export interface ServiceForecast {
+  status: ForecastStatus;
+  limit: number;
+  limitSource: "operator" | "default";
+  unit: string;
+  pointsUsed: number;
+  spanDays: number;
+  /** Readings used start after this maintenance date, if any. */
+  since: string | null;
+  slopePerDay: number | null;
+  slopeLowPerDay: number | null;
+  slopeHighPerDay: number | null;
+  confidence: number;
+  /** Robust current level: median of the three most recent readings. */
+  currentLevel: number | null;
+  latestAt: string | null;
+  daysToLimit: number | null;
+  daysEarliest: number | null;
+  /** null when the slow end of the interval never reaches the limit within the horizon. */
+  daysLatest: number | null;
+  expectedDate: string | null;
+  earliestDate: string | null;
+  latestDate: string | null;
+  beyondHorizon: boolean;
+  /** True when the forecast reaches further ahead than the readings it is based on. */
+  extrapolated: boolean;
+  explanation: string;
 }
 
 export interface PointEvidence {
@@ -97,6 +144,8 @@ export interface MetricAssessment {
   qualityFlags: QualityFlag[];
   /** Plain-language statements of what was (and was not) found. */
   notes: string[];
+  temperatureCorrection?: TemperatureCorrection | null;
+  forecast?: ServiceForecast | null;
 }
 
 export interface ChargerHealthSummary {

@@ -11,11 +11,12 @@
 import { loadEnvConfig } from "@next/env";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { createDatabase } from "../../src/lib/db/client";
-import { chargers, healthObservations, stations, vehicleProfiles } from "../../src/lib/db/schema";
+import { chargers, healthObservations, maintenanceEvents, stations, vehicleProfiles } from "../../src/lib/db/schema";
 import {
   SYNTHETIC_SOURCE,
   SYNTHETIC_VEHICLE_PROFILES,
   syntheticChargers,
+  syntheticMaintenance,
   syntheticObservations,
   syntheticStations,
 } from "./synthetic";
@@ -94,11 +95,27 @@ async function main() {
           observedAt: o.observedAt,
           value: o.value,
           sourceUnit: o.sourceUnit,
+          temperatureC: o.temperatureC,
           provenance: "simulated" as const,
           source: SYNTHETIC_SOURCE,
         })),
       );
       inserted += obs.length;
+    }
+
+    const withWork = await db
+      .selectDistinct({ chargerId: maintenanceEvents.chargerId })
+      .from(maintenanceEvents)
+      .where(inArray(maintenanceEvents.chargerId, [...chargerIds.values()]));
+    const hasWork = new Set(withWork.map((r) => r.chargerId));
+    for (const c of list) {
+      const id = chargerIds.get(c.code)!;
+      // Only alongside freshly generated observations, so dates line up with the readings.
+      if (hasWork.has(id) || hasData.has(id)) continue;
+      const work = syntheticMaintenance(c, now);
+      if (work.length) {
+        await db.insert(maintenanceEvents).values(work.map((w) => ({ chargerId: id, performedAt: w.performedAt, action: w.action, note: w.note })));
+      }
     }
 
     for (const v of SYNTHETIC_VEHICLE_PROFILES) {

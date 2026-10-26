@@ -73,6 +73,7 @@ One row per measurement.
 | `metric` | yes | measurement, parameter, quantity | One of the metrics below (unit-suffixed names such as `contact_resistance_mohm` accepted). |
 | `value` | yes | reading, measurement_value, val | A number. Empty values are **rejected** — never treated as zero. |
 | `unit` | yes | units, uom | Converted to the metric's canonical unit; unknown units are rejected. |
+| `temperature_c` | no | temperature, temp_c, contact_temperature, contact_temp_c, temp | Contact temperature when measured (−40 to 150 °C). When every contact-resistance or voltage-drop reading has one, values are restated at 20 °C for analysis; stored values stay as measured. |
 | `provenance` | no | data_type, origin, data_origin | `observed`, `derived`, `estimated`, `sample` (also `demo`, `test`). If missing, the value chosen in the import form is used. |
 | `source` | no | source_name, instrument, device | Free text, max 120 chars. |
 
@@ -112,8 +113,9 @@ The demo stations, the example files and the supplied session dataset use this v
 | Table | Purpose | Key constraints |
 |---|---|---|
 | `stations` | Charging sites | unique `code`; both coordinates or neither, within valid ranges |
-| `chargers` | Chargers/connectors, with the latest health status and full assessment (`health_summary` JSON) | unique `code`; FK → stations (cascade); power > 0 |
-| `health_observations` | Measurements in canonical units, with source unit, provenance and import | unique (`charger_id`, `metric`, `observed_at`); FK → chargers, dataset_imports |
+| `chargers` | Chargers/connectors, with the latest health status, full assessment (`health_summary` JSON, including forecasts and temperature correction) and optional `contact_resistance_limit_mohm` | unique `code`; FK → stations (cascade); power > 0; limit 0–100 mΩ |
+| `health_observations` | Measurements in canonical units, with source unit, optional `temperature_c`, provenance and import | unique (`charger_id`, `metric`, `observed_at`); FK → chargers, dataset_imports; temperature −40–150 °C |
+| `maintenance_events` | Work recorded on a connector (`performed_at`, `action`, `note`), used for repair verification and to restart forecasts | FK → chargers (cascade); action in the five allowed values; note ≤ 500 chars |
 | `alerts` | Explainable alerts with evidence JSON, thresholds, confidence note, suggested action | at most one open/acknowledged alert per (`charger_id`, `metric`, `rule`) |
 | `alert_events` | Status history of each alert (with optional note) | FK → alerts |
 | `dataset_imports` | Every import attempt, its counts and row issues | unique `file_hash` among completed imports |

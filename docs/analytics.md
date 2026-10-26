@@ -102,7 +102,59 @@ against the charger's **own** baseline:
 7. Labels the assessment historical when the newest reading is older than 45 days.
 
 Temperature rise and voltage fluctuation are supporting evidence only. All thresholds are on
-the in-app **Analysis method** page and in `src/config/analysis.ts` (version `2026.10-2`).
+the in-app **Analysis method** page and in `src/config/analysis.ts` (version `2026.10-3`).
+
+## Temperature correction
+
+Resistance of copper-alloy contacts rises about 0.393 % per °C. A contact measured at 45 °C reads
+roughly 10 % higher than the same contact at 20 °C, so in a hot climate the season alone can look
+like wear. When **every** contact-resistance or voltage-drop reading records the contact
+temperature (`temperature_c` on import), each is restated at 20 °C:
+
+```
+R_20 = R_measured / (1 + 0.00393 × (T − 20))
+```
+
+Baselines, alerts, forecasts and repair checks then use the restated values, and the charts show
+them. If only some readings carry a temperature, **none** are corrected and the page says why:
+correcting part of a series would itself create jumps. The coefficient is an approximation for
+copper; it is a single parameter in `src/config/analysis.ts`.
+
+## Service-limit forecast
+
+For contact resistance, voltage drop and power loss:
+
+1. Take the latest 12 readings **after the most recent recorded maintenance** (at least 6).
+2. Estimate the rate with the Theil–Sen slope and its uncertainty with Sen's distribution-free
+   80 % interval (ranks of the sorted pairwise slopes).
+3. The current level is the median of the last three readings.
+4. Days to the limit = (limit − current level) / rate; the range uses the fast and slow ends of
+   the interval.
+
+The limit is the operator's (set per charger for contact resistance) or, by default, baseline
+median + 50 %. **No date is given** unless the whole interval is above zero. Dates more than 365
+days ahead are reported as "more than a year", and a date further ahead than the readings cover is
+marked indicative. An earliest date within 30 days becomes an action item (high priority when the
+likely date is within 14 days or the level is already above the limit). A forecast extends the
+recent rate; it is not a guarantee.
+
+## Repair verification
+
+Each recorded maintenance event is checked against the readings after it (and before the next
+event), using the charger's baseline and deviation threshold:
+
+| Outcome | Rule |
+|---|---|
+| Awaiting a new reading | No reading since the work |
+| Restored — still confirming | First reading back within the threshold; fewer than 3 readings or 14 days so far |
+| Fix held | Within the threshold for ≥ 3 readings over ≥ 14 days |
+| Relapsed | Back within range at first, then two consecutive readings (or the latest) above it |
+| Partly improved | Still above the threshold, but ≥ 50 % of the excess over baseline removed |
+| No measurable effect | Still above the threshold and less than 50 % of the excess removed |
+
+The **Repair checks** page gives the held rate per kind of work (held ÷ concluded jobs; jobs still
+being confirmed are excluded). Outcomes describe the measurements, not anyone's workmanship, and a
+rate from a handful of jobs is an early signal only.
 
 ## Driver ranking
 

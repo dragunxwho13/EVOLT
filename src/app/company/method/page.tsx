@@ -32,6 +32,18 @@ const STEPS: { title: string; body: string }[] = [
     body: `Over the last ${P.trendWindow} readings, the Theil–Sen median slope must be upward in at least ${formatPercent(P.trendConsistency)} of reading pairs and add up to at least ${formatPercent(P.trendMinRelativeChange)} of the baseline (and ${P.trendMinScaleMultiple} spreads). A rise of ${formatPercent(P.trendSevereRelativeChange)} with a deviating latest reading recommends inspection.`,
   },
   {
+    title: "Correct for temperature",
+    body: `Metal resistance rises about ${formatPercent(P.temperatureCoefficientPerC, 2)} per °C, so a hot reading looks worse than a cold one. When every contact-resistance or voltage-drop reading records the contact temperature, each is restated at ${P.temperatureReferenceC} °C before anything else is computed. If only some readings have a temperature, none are corrected (mixing would create artificial jumps) and the page says so.`,
+  },
+  {
+    title: "Forecast the service date",
+    body: `Using the latest ${P.forecastWindow} readings since the most recent recorded maintenance (at least ${P.forecastMinPoints}), the Theil–Sen rate and Sen's ${formatPercent(P.forecastConfidence)} interval give when the current level (median of the last three readings) would reach the service limit — the operator's, or baseline + ${formatPercent(P.forecastLimitRelative)} by default. No date is given unless the whole interval shows a rise; dates beyond ${P.forecastHorizonDays} days are reported as "more than a year". An earliest date within ${P.forecastActionDays} days becomes an action item.`,
+  },
+  {
+    title: "Check that repairs worked",
+    body: `After recorded work, the first reading shows the immediate effect: back within the deviation threshold means restored; at least ${formatPercent(P.repairPartialFraction)} of the excess removed means partly improved; otherwise no measurable effect. A restored connector "held" once ${P.repairVerifyMinReadings} readings over ${P.repairVerifyMinDays} days stay in range, and "relapsed" if two consecutive readings (or the latest) cross the threshold again.`,
+  },
+  {
     title: "Count recurring faults",
     body: `Connector-related faults in the ${P.faultWindowDays} days ending at the latest report: ${P.faultMonitorTotal} or more (and 1.5× the historical rate) means Monitor; ${P.faultInspectTotal} or more means Inspection recommended.`,
   },

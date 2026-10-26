@@ -123,6 +123,8 @@ export const METRICS = {
     minScale: 0.005,
     direction: "higher_is_worse",
     supporting: false,
+    temperatureCorrected: true,
+    forecast: true,
     description:
       "Resistance across the mated connector contact path, typically from a periodic four-wire (Kelvin) inspection measurement.",
   },
@@ -134,6 +136,8 @@ export const METRICS = {
     minScale: 0.5,
     direction: "higher_is_worse",
     supporting: false,
+    temperatureCorrected: true,
+    forecast: true,
     description:
       "Voltage drop across the connector at a recorded current, typically normalised by the operator to a reference current.",
   },
@@ -145,6 +149,8 @@ export const METRICS = {
     minScale: 0.5,
     direction: "higher_is_worse",
     supporting: false,
+    temperatureCorrected: false,
+    forecast: false,
     description:
       "Number of connector-related fault codes (e.g. communication loss, interlock, isolation) logged in the reporting period that ends at the timestamp.",
   },
@@ -156,6 +162,8 @@ export const METRICS = {
     minScale: 0.05,
     direction: "higher_is_worse",
     supporting: false,
+    temperatureCorrected: false,
+    forecast: true,
     description:
       "Power lost between supply and vehicle during a session. A sustained rise at one charger is consistent with extra resistance in the charging path, but has other possible causes.",
   },
@@ -167,6 +175,8 @@ export const METRICS = {
     minScale: 0.25,
     direction: "higher_is_worse",
     supporting: true,
+    temperatureCorrected: false,
+    forecast: false,
     description:
       "Supply-voltage variation during a session. Mostly reflects the grid rather than the connector, so it is supporting evidence only.",
   },
@@ -178,6 +188,8 @@ export const METRICS = {
     minScale: 0.5,
     direction: "higher_is_worse",
     supporting: true,
+    temperatureCorrected: false,
+    forecast: false,
     description:
       "Connector temperature above ambient. Supporting evidence only: it depends heavily on current, ambient conditions and sensor placement.",
   },
@@ -191,6 +203,10 @@ export const METRICS = {
     minScale: number;
     direction: "higher_is_worse";
     supporting: boolean;
+    /** Restated at the reference temperature when every reading records one. */
+    temperatureCorrected: boolean;
+    /** A time-to-service-limit forecast is computed for this metric. */
+    forecast: boolean;
     description: string;
   }
 >;
@@ -201,3 +217,18 @@ export const METRIC_KEYS = Object.keys(METRICS) as MetricKey[];
 export function isMetricKey(value: string): value is MetricKey {
   return Object.prototype.hasOwnProperty.call(METRICS, value);
 }
+
+/** What was done to a connector. Recorded by people; EVOLT then checks whether it worked. */
+export const MAINTENANCE_ACTIONS = ["cleaned", "contacts_replaced", "connector_replaced", "adjusted", "other"] as const;
+export type MaintenanceAction = (typeof MAINTENANCE_ACTIONS)[number];
+
+export const MAINTENANCE_ACTION_LABELS: Record<MaintenanceAction, string> = {
+  cleaned: "Contacts cleaned",
+  contacts_replaced: "Contacts / pins replaced",
+  connector_replaced: "Connector or cable replaced",
+  adjusted: "Latch or fit adjusted",
+  other: "Other work",
+};
+
+/** Metrics a repair is verified against, in order of preference. */
+export const REPAIR_METRICS = ["contact_resistance", "voltage_drop"] as const satisfies readonly MetricKey[];
