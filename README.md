@@ -12,6 +12,7 @@ first, and why.
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)
+[![CI](https://github.com/dragunxwho13/EVOLT/actions/workflows/ci.yml/badge.svg)](https://github.com/dragunxwho13/EVOLT/actions/workflows/ci.yml)
 ![Tests](https://img.shields.io/badge/tests-190%20passing-2ea44f)
 [![Live demo](https://img.shields.io/badge/live%20demo-evolt--ev.vercel.app-000000?logo=vercel&logoColor=white)](https://evolt-ev.vercel.app)
 ![External APIs](https://img.shields.io/badge/external%20APIs-none-6e7781)
