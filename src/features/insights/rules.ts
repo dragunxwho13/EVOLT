@@ -5,16 +5,19 @@
  * pattern is a reason to investigate, not proof of a hardware fault.
  */
 import { ALERT_RULE_LABELS, METRICS, type AlertRule, type AlertSeverity, type AlertStatus, type HealthStatus, type MetricKey } from "@/config/domain";
+import { ANALYSIS_PARAMS } from "@/config/analysis";
 import { formatDate, formatNumber, formatPercent } from "@/lib/utils/format";
+import type { ChargerHealthSummary } from "@/types/analysis";
 import { bonferroniZ, dailySeries, groupBy, summarizeSessions, wilson, type NormalizedSession, type SessionSummary } from "@/features/sessions/metrics";
 
 export type Priority = "high" | "medium" | "low";
 export type InsightCategory = "connector_health" | "energy_loss" | "supply_quality" | "data_quality" | "demand" | "coverage";
 
 export const PRIORITY_CRITERIA: Record<Priority, string> = {
-  high: "A connector-health analysis currently recommends inspection (persistent deviation, sustained trend or recurring faults).",
+  high:
+    "A connector-health analysis currently recommends inspection (persistent deviation, sustained trend or recurring faults), or a connector is forecast to reach its service limit within 14 days (or is already above it).",
   medium:
-    "A connector-health pattern to monitor, a station whose high-loss or poor-stability share is statistically above the fleet, or inconsistent records in at least 5 % of a station's sessions.",
+    "A connector forecast to reach its service limit within 30 days, a connector-health pattern to monitor, a station whose high-loss or poor-stability share is statistically above the fleet, or inconsistent records in at least 5 % of a station's sessions.",
   low: "Data gaps, historical-only evidence, low demand relative to other stations, isolated inconsistent records, or an alert whose pattern is no longer detected.",
 };
 
@@ -83,6 +86,76 @@ export interface ChargerInput {
   healthStatus: HealthStatus;
   lastObservationAt: Date | null;
   historical: boolean;
+}
+
+export interface ForecastChargerInput {
+  id: string;
+  code: string;
+  stationName: string;
+  isDemo: boolean;
+  summary: ChargerHealthSummary | null;
+}
+
+const DAY = 86_400_000;
+
+/**
+ * Service-limit forecasts become action items when the earliest likely date is close. The
+ * forecast itself is computed by the health analysis; this rule only decides what is urgent.
+ */
+export function forecastInsights(chargers: readonly ForecastChargerInput[], now: Date): Insight[] {
+  const out: Insight[] = [];
+  for (const c of chargers) {
+    if (!c.summary || c.summary.historical) continue;
+    for (const m of c.summary.metrics) {
+      const f = m.forecast;
+      if (!f || (f.status !== "projected" && f.status !== "already_above")) continue;
+      const label = METRICS[m.metric].label;
+      const subject = { kind: "charger" as const, id: c.id, label: `${c.code} · ${c.stationName}${c.isDemo ? " (demo)" : ""}`, href: `/company/chargers/${c.id}` };
+      const limitText = `${formatNumber(f.limit, 3)} ${f.unit} (${f.limitSource === "operator" ? "operator-set" : "default: baseline + 50%"})`;
+      if (f.status === "already_above") {
+        out.push({
+          key: `forecast:${c.id}:${m.metric}`,
+          category: "connector_health",
+          priority: "high",
+          subject,
+          headline: `${label} is already at its service limit`,
+          metric: { label: "Current level", value: `${formatNumber(f.currentLevel ?? 0, 3)} ${f.unit}`, comparison: `limit ${limitText}` },
+          evidence: [f.explanation],
+          rule: "Median of the three latest readings ≥ service limit.",
+          whyItMatters: "The connector has passed the level at which it was meant to be serviced; heating and failed sessions become more likely.",
+          action: "Service the connector now, record the work on the charger page, and take a new reading to confirm the fix.",
+          source: "dataset",
+          digest: digestOf(["above", f.currentLevel, f.limit]),
+        });
+        continue;
+      }
+      if (!f.earliestDate) continue;
+      const daysToEarliest = (new Date(f.earliestDate).getTime() - now.getTime()) / DAY;
+      if (daysToEarliest > ANALYSIS_PARAMS.forecastActionDays) continue;
+      const expectedDays = f.expectedDate ? (new Date(f.expectedDate).getTime() - now.getTime()) / DAY : null;
+      const priority: Priority = expectedDays !== null && expectedDays <= 14 ? "high" : "medium";
+      out.push({
+        key: `forecast:${c.id}:${m.metric}`,
+        category: "connector_health",
+        priority,
+        subject,
+        headline: `${label} forecast to reach its service limit ${f.expectedDate ? `around ${formatDate(f.expectedDate)}` : `from ${formatDate(f.earliestDate)}`}`,
+        metric: {
+          label: "Likely date",
+          value: f.expectedDate ? formatDate(f.expectedDate) : `after ${formatDate(f.earliestDate)}`,
+          comparison: `${formatPercent(f.confidence)} range ${formatDate(f.earliestDate)} – ${f.latestDate ? formatDate(f.latestDate) : "later"}`,
+        },
+        evidence: [f.explanation],
+        rule: `Theil–Sen rate over the latest readings, Sen ${formatPercent(f.confidence)} interval entirely above zero, earliest date within ${ANALYSIS_PARAMS.forecastActionDays} days.`,
+        whyItMatters: "Servicing before the limit avoids the heating, derating and failed sessions that follow it, and lets the visit be planned rather than urgent.",
+        action: `Plan a service visit before ${formatDate(f.earliestDate)}; record the work on the charger page so EVOLT can check it held.`,
+        qualification: f.extrapolated ? "The date is further ahead than the readings cover, so treat it as indicative." : undefined,
+        source: "dataset",
+        digest: digestOf(["projected", f.expectedDate?.slice(0, 10) ?? null, f.earliestDate.slice(0, 10), f.limit]),
+      });
+    }
+  }
+  return out;
 }
 
 /** Thresholds for the dataset rules, in one place so the UI can state them. */
@@ -417,7 +490,15 @@ export function sessionInsights(sessions: readonly NormalizedSession[]): Insight
 }
 
 export function sortInsights(items: Insight[]): Insight[] {
-  return [...items].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.category.localeCompare(b.category) || a.headline.localeCompare(b.headline));
+  // Within a priority and category, confirmed health alerts come before forecasts and dataset findings.
+  const sourceRank = (i: Insight) => (i.source === "health_alert" ? 0 : 1);
+  return [...items].sort(
+    (a, b) =>
+      PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
+      a.category.localeCompare(b.category) ||
+      sourceRank(a) - sourceRank(b) ||
+      a.headline.localeCompare(b.headline),
+  );
 }
 
 /** Daily series for the overview trend charts. */

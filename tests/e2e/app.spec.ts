@@ -180,7 +180,7 @@ test.describe("company workflow", () => {
     await expect(page.getByText("High priority").first()).toBeVisible();
     await expect(page.getByText("Why it matters:").first()).toBeVisible();
     await expect(page.getByText("Next step:").first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Connector health · 26 chargers at 12 stations/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Connector health · 29 chargers at 13 stations/ })).toBeVisible();
   });
 
   test("an action item can be acknowledged from the action list and the decision persists", async ({ page }) => {
@@ -206,6 +206,46 @@ test.describe("company workflow", () => {
     await page.getByRole("link", { name: "Where drivers can go instead" }).click();
     await expect(page).toHaveURL(/\/driver\?fromCharger=/);
     await expect(page.getByText(/Alternatives to DEMO-01-C2/)).toBeVisible();
+  });
+
+  test("the service forecast lists connectors by date and links to the corrected evidence", async ({ page }) => {
+    await page.goto("/company/forecasts");
+    await expect(page.getByRole("heading", { name: "Service forecast" })).toBeVisible();
+    await expect(page.getByText("Already above limit")).toBeVisible();
+    await page.getByRole("link", { name: "DEMO-13-C2" }).first().click();
+    const forecast = page.getByTestId("forecast-contact_resistance");
+    await expect(forecast.getByText(/Service limit likely around/)).toBeVisible();
+    await expect(forecast.getByText(/^80% range: /)).toBeVisible();
+    await expect(page.getByText(/Temperature-corrected to 20 °C/).first()).toBeVisible();
+    // A connector whose raw readings rose only because they were taken hot is not flagged.
+    await page.goto("/company/chargers?q=DEMO-13-C3");
+    await page.getByRole("link", { name: "DEMO-13-C3" }).click();
+    await expect(page.getByRole("heading", { name: "Health assessment" })).toBeVisible();
+    await expect(page.getByText("Normal in available data").first()).toBeVisible();
+  });
+
+  test("repair checks show whether work held, and work and limits can be recorded", async ({ page }) => {
+    await page.goto("/company/maintenance");
+    await expect(page.getByRole("heading", { name: "Repair checks" })).toBeVisible();
+    await expect(page.getByText("Fix held").first()).toBeVisible();
+    await expect(page.getByText("Relapsed").first()).toBeVisible();
+    await expect(page.getByText("50% of 2")).toBeVisible();
+
+    await page.getByRole("link", { name: "DEMO-13-C2" }).first().click();
+    await expect(page.getByRole("heading", { name: "Maintenance and repair checks" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Recorded maintenance" }).getByText(/rose above it again \d+ days later/)).toBeVisible();
+
+    await page.getByLabel("Your service limit (mΩ)").fill("0.6");
+    await page.getByRole("button", { name: "Set limit" }).click();
+    await expect(page.getByText("Limit saved; forecast updated.")).toBeVisible();
+    await expect(page.getByTestId("forecast-contact_resistance").getByText(/set by the operator/)).toBeVisible();
+
+    await page.getByLabel("Work done").selectOption("contacts_replaced");
+    await page.getByLabel("Note (optional)", { exact: true }).fill("e2e: pins replaced");
+    await page.getByRole("button", { name: "Record work" }).click();
+    await expect(page.getByText(/Recorded\. Take a new reading/)).toBeVisible();
+    await expect(page.getByText("Awaiting a new reading").first()).toBeVisible();
+    await expect(page.getByText("“e2e: pins replaced”")).toBeVisible();
   });
 
   test("health alerts expand to show their triggering evidence", async ({ page }) => {
@@ -285,7 +325,7 @@ test.describe("data import, analytics and model", () => {
   });
 
   test("no page labels data as synthetic or simulated", async ({ page }) => {
-    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings"]) {
+    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings", "/company/forecasts", "/company/maintenance"]) {
       await page.goto(url);
       await page.waitForLoadState("networkidle");
       expect(await page.locator("body").innerText(), url).not.toMatch(/synthetic|simulated/i);
@@ -296,8 +336,8 @@ test.describe("data import, analytics and model", () => {
     await page.goto("/company/data");
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: "Remove demo data" }).click();
-    await page.getByRole("button", { name: /Yes, remove 12 demo stations/ }).click();
-    await expect(page.getByText(/Removed 12 demo stations/)).toBeVisible();
+    await page.getByRole("button", { name: /Yes, remove 13 demo stations/ }).click();
+    await expect(page.getByText(/Removed 13 demo stations/)).toBeVisible();
     await page.goto("/company");
     await expect(page.getByText(/demo stations, labelled/)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /Connector health · \d+ chargers/ })).toBeVisible();
@@ -309,7 +349,7 @@ test.describe("regressions", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("/company");
-    for (const link of ["Data import", "Overview", "Performance", "Overview", "Settings", "Overview"]) {
+    for (const link of ["Data import", "Overview", "Performance", "Service forecast", "Repair checks", "Overview", "Settings", "Overview"]) {
       await page.getByRole("link", { name: link, exact: true }).first().click();
       await page.waitForLoadState("networkidle");
       await expect(page.getByText("This page could not be displayed")).toHaveCount(0);

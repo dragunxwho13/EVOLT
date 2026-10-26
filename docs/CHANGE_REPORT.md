@@ -90,6 +90,28 @@ Router, PostgreSQL with Drizzle, Zod, and the existing analysis, ingestion and l
 - **Station pages:** mini maps showing the station and its nearest neighbours.
 - **Tests added:** 7 unit (projection, scale, fitting, grouping) and 4 browser (map flows).
 
+## 4c. Temperature correction, service forecast and repair checks (added 26 Oct 2026)
+
+- **Temperature correction.** New optional `temperature_c` on observations (import column,
+  database column with a range check). Contact resistance and voltage drop are restated at 20 °C
+  when every reading has a temperature; otherwise used as measured, with the reason shown.
+- **Service forecast.** Theil–Sen rate with Sen's 80 % interval over the readings since the latest
+  maintenance; likely date and range to the operator's limit (new
+  `chargers.contact_resistance_limit_mohm`, editable on the charger page) or baseline + 50 %.
+  Stored in each metric's assessment; new **Service forecast** page; forecasts within 30 days
+  become action items. Analysis version → `2026.10-3`.
+- **Repair checks.** New `maintenance_events` table, API and *Record work* form. Each job is
+  verified against later readings (held, relapsed, partly improved, no measurable effect, still
+  confirming, awaiting a reading); new **Repair checks** page with held rates per kind of work.
+  Charts mark maintenance and the service limit.
+- **Demo data.** Demo readings now carry a contact temperature (Chennai-like season). A 13th demo
+  station adds three stories: a cleaning that held, a cleaning that relapsed, and a heat-only rise
+  that temperature correction correctly leaves unflagged. Earlier demo values are unchanged.
+- **Ordering.** Within a priority and category, confirmed health alerts are listed before forecasts.
+- Migration `0004_temperature_forecast_maintenance.sql` (forward-only).
+- Verified 26 Oct 2026: lint, typecheck and build clean; 122/122 unit, 23/23 integration,
+  26/26 end-to-end.
+
 ## 5. Verification (tests actually run on 25 Oct 2026, Linux sandbox)
 
 | Check | Result |

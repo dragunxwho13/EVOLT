@@ -3,8 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { ALERT_RULE_LABELS, CONNECTOR_LABELS, HEALTH_LABELS, METRICS, METRIC_KEYS, type MetricKey } from "@/config/domain";
+import { ALERT_RULE_LABELS, CONNECTOR_LABELS, HEALTH_LABELS, MAINTENANCE_ACTION_LABELS, METRICS, METRIC_KEYS, type MetricKey } from "@/config/domain";
+import { MaintenanceForm } from "@/components/chargers/maintenance-form";
 import { MetricEvidence } from "@/components/chargers/metric-evidence";
+import { RepairOutcomeTag } from "@/components/chargers/repair-outcome";
+import { ServiceLimitForm } from "@/components/chargers/service-limit-form";
+import { analysedValue } from "@/features/anomaly-detection/temperature";
+import { verifyChargerRepairs } from "@/features/connector-health/charger-repairs";
 import { ButtonLink, ErrorState, KeyValues, Notice, PageHeader, Panel, PanelSkeleton } from "@/components/ui/primitives";
 import { AlertStatusTag, HealthBadge, HealthGlyph, OperationalBadge, ProvenanceTag, DemoTag } from "@/components/ui/status";
 import { getChargerDetail } from "@/features/connector-health/queries";
@@ -34,16 +39,25 @@ async function ChargerContent({ params }: { params: Promise<{ id: string }> }) {
     if (result.notFound) notFound();
     return <ErrorState {...result.error} />;
   }
-  const { charger, station, observations, observationTotal, alerts, sensorReadings, models } = result.data;
+  const { charger, station, observations, observationTotal, alerts, sensorReadings, models, maintenance } = result.data;
   const now = new Date();
   const summary = charger.healthSummary;
 
+  // Charts show values exactly as analysed: temperature-corrected when the analysis corrected them.
+  const correctedMetrics = new Set((summary?.metrics ?? []).filter((m) => m.temperatureCorrection?.applied).map((m) => m.metric));
   const seriesByMetric = new Map<MetricKey, { t: number; value: number }[]>();
   for (const o of observations) {
     const list = seriesByMetric.get(o.metric) ?? [];
-    list.push({ t: o.observedAt.getTime(), value: o.value });
+    list.push({ t: o.observedAt.getTime(), value: analysedValue(o.metric, o.value, o.temperatureC, correctedMetrics.has(o.metric)) });
     seriesByMetric.set(o.metric, list);
   }
+  const markers = maintenance.map((e) => ({ t: e.performedAt.getTime(), label: "Work" }));
+  const repairs = verifyChargerRepairs(
+    summary,
+    observations,
+    maintenance.map((e) => ({ id: e.id, performedAt: e.performedAt, action: e.action })),
+  );
+  const repairById = new Map(repairs.results.map((r) => [r.eventId, r]));
   const activeAlerts = alerts.filter((a) => a.status === "open" || a.status === "acknowledged");
   const assessedMetrics = summary?.metrics ?? [];
   const missingMetrics = METRIC_KEYS.filter((k) => !assessedMetrics.some((m) => m.metric === k));
@@ -232,7 +246,15 @@ async function ChargerContent({ params }: { params: Promise<{ id: string }> }) {
       ) : (
         <div className="space-y-4">
           {assessedMetrics.map((m) => (
-            <MetricEvidence key={m.metric} assessment={m} series={seriesByMetric.get(m.metric) ?? []} />
+            <MetricEvidence
+              key={m.metric}
+              assessment={m}
+              series={seriesByMetric.get(m.metric) ?? []}
+              markers={markers}
+              limitControl={
+                m.metric === "contact_resistance" ? <ServiceLimitForm chargerId={charger.id} current={charger.contactResistanceLimitMohm} /> : undefined
+              }
+            />
           ))}
         </div>
       )}
@@ -242,7 +264,51 @@ async function ChargerContent({ params }: { params: Promise<{ id: string }> }) {
         </p>
       )}
 
-      <div className="mt-9 grid gap-5 lg:grid-cols-2">
+      <Panel
+        className="mt-9"
+        title="Maintenance and repair checks"
+        description={
+          repairs.metric
+            ? `Each piece of recorded work is checked against later ${METRICS[repairs.metric].label.toLowerCase()} readings and this charger's own normal range.`
+            : "Record work done on this connector; EVOLT then checks later readings to see whether it worked and whether it lasted."
+        }
+      >
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="min-w-0">
+            {maintenance.length === 0 ? (
+              <p className="text-sm text-muted">No maintenance has been recorded for this charger.</p>
+            ) : (
+              <ol className="space-y-3" aria-label="Recorded maintenance">
+                {[...maintenance].reverse().map((e) => {
+                  const r = repairById.get(e.id);
+                  return (
+                    <li key={e.id} className="rounded-md border border-line px-3 py-2.5 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-ink">
+                          {MAINTENANCE_ACTION_LABELS[e.action]} · <span className="text-muted">{formatDate(e.performedAt)}</span>
+                        </span>
+                        {r && <RepairOutcomeTag outcome={r.outcome} />}
+                      </div>
+                      {e.note && <p className="mt-0.5 text-muted">“{e.note}”</p>}
+                      <p className="mt-1 text-muted">{r ? r.explanation : repairs.reason}</p>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+          <div className="min-w-0">
+            <h3 className="mb-2 text-sm font-semibold">Record work</h3>
+            <MaintenanceForm chargerId={charger.id} />
+            <p className="mt-3 text-xs text-faint">
+              Outcomes describe the measurements after the work, not the quality of anyone&apos;s work. Forecasts restart from the latest
+              recorded work.
+            </p>
+          </div>
+        </div>
+      </Panel>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Panel title="Alerts for this charger" flush>
           {alerts.length === 0 ? (
             <p className="px-5 py-6 text-sm text-muted">No alerts have been raised for this charger.</p>
@@ -302,12 +368,13 @@ async function ChargerContent({ params }: { params: Promise<{ id: string }> }) {
           <p className="px-5 py-6 text-sm text-muted">No observations recorded.</p>
         ) : (
           <div className="max-h-[28rem] overflow-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <table className="w-full min-w-[720px] text-sm">
               <thead className="sticky top-0 border-b border-line bg-surface text-left text-muted">
                 <tr>
                   <th scope="col" className="px-5 py-2.5 font-medium">Observed</th>
                   <th scope="col" className="px-3 py-2.5 font-medium">Metric</th>
-                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Value</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Value (as measured)</th>
+                  <th scope="col" className="px-3 py-2.5 text-right font-medium">Temp.</th>
                   <th scope="col" className="px-3 py-2.5 font-medium">Provenance</th>
                   <th scope="col" className="px-5 py-2.5 font-medium">Source</th>
                 </tr>
@@ -318,6 +385,7 @@ async function ChargerContent({ params }: { params: Promise<{ id: string }> }) {
                     <td className="px-5 py-2 whitespace-nowrap text-muted">{formatDateTime(o.observedAt)}</td>
                     <td className="px-3 py-2">{METRICS[o.metric].label}</td>
                     <td className="num px-3 py-2 text-right">{formatMetricValue(o.metric, o.value)}</td>
+                    <td className="num px-3 py-2 text-right text-muted">{o.temperatureC !== null ? `${formatNumber(o.temperatureC, 1)} °C` : "—"}</td>
                     <td className="px-3 py-2"><ProvenanceTag provenance={o.provenance} /></td>
                     <td className="max-w-56 truncate px-5 py-2 text-muted">{o.source ?? "—"}</td>
                   </tr>

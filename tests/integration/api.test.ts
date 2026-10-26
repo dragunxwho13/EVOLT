@@ -8,6 +8,9 @@ import { GET as alertGET, PATCH as alertPATCH } from "@/app/api/alerts/[id]/rout
 import { POST as recomputePOST } from "@/app/api/analytics/recompute/route";
 import { GET as overviewGET } from "@/app/api/analytics/overview/route";
 import { GET as chargerGET } from "@/app/api/chargers/[id]/route";
+import { GET as maintenanceGET, POST as maintenancePOST } from "@/app/api/chargers/[id]/maintenance/route";
+import { PUT as limitPUT } from "@/app/api/chargers/[id]/service-limit/route";
+import { GET as fleetRepairsGET } from "@/app/api/maintenance/route";
 import { GET as datasetsGET, POST as datasetsPOST } from "@/app/api/datasets/route";
 import { POST as previewPOST } from "@/app/api/datasets/preview/route";
 import { DELETE as syntheticDELETE } from "@/app/api/datasets/synthetic/route";
@@ -398,6 +401,53 @@ describe("API and persistence", () => {
     ).rejects.toThrow();
     const count = await db.execute(sql`select count(*)::int as n from stations`);
     expect((count.rows[0] as { n: number }).n).toBe(before);
+  });
+
+  it("forecasts against an operator limit, records maintenance and verifies the repair from later readings", async () => {
+    const [ch] = await getDb().select().from(chargers).where(eq(chargers.code, "EX-01-B"));
+    const id = ch!.id;
+    const jsonReq = (method: string, payload: unknown, headers: Record<string, string> = ADMIN) =>
+      new Request(`http://localhost/api/chargers/${id}`, { method, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const crForecast = async () => {
+      const [row] = await getDb().select().from(chargers).where(eq(chargers.id, id));
+      return row!.healthSummary!.metrics.find((m) => m.metric === "contact_resistance")!.forecast!;
+    };
+
+    // The degrading series is already above the default limit (baseline + 50 %).
+    expect((await crForecast()).status).toBe("already_above");
+
+    expect((await limitPUT(jsonReq("PUT", { contactResistanceLimitMohm: 0.9 }, {}), ctx(id))).status).toBe(401);
+    expect((await limitPUT(jsonReq("PUT", { contactResistanceLimitMohm: -1 }), ctx(id))).status).toBe(400);
+    expect((await limitPUT(jsonReq("PUT", { contactResistanceLimitMohm: 0.9 }), ctx(id))).status).toBe(200);
+    const withLimit = await crForecast();
+    expect(withLimit).toMatchObject({ limit: 0.9, limitSource: "operator", status: "projected" });
+    expect(withLimit.expectedDate).not.toBeNull();
+
+    expect((await maintenancePOST(jsonReq("POST", { performedAt: "2026-06-17T09:00:00Z", action: "polished" }), ctx(id))).status).toBe(400);
+    expect((await maintenancePOST(jsonReq("POST", { performedAt: "2099-01-01T00:00:00Z", action: "cleaned" }), ctx(id))).status).toBe(400);
+    const created = await maintenancePOST(jsonReq("POST", { performedAt: "2026-06-17T09:00:00Z", action: "cleaned", note: "pins cleaned" }), ctx(id));
+    expect(created.status).toBe(201);
+    const list = (await body<Data<{ items: { action: string; note: string }[] }>>(await maintenanceGET(get(`/api/chargers/${id}/maintenance`), ctx(id)))).data;
+    expect(list.items).toEqual([expect.objectContaining({ action: "cleaned", note: "pins cleaned" })]);
+
+    // The forecast restarts after maintenance: no readings yet, so no date.
+    const restarted = await crForecast();
+    expect(restarted.status).toBe("insufficient_data");
+    expect(restarted.since).toBe("2026-06-17T09:00:00.000Z");
+    let fleet = (await body<Data<{ rows: { chargerCode: string; outcome: string }[] }>>(await fleetRepairsGET())).data;
+    expect(fleet.rows.find((r) => r.chargerCode === "EX-01-B")!.outcome).toBe("awaiting_measurement");
+
+    // Readings back at baseline for three weeks → the fix held. Temperatures on only some rows are imported but not used.
+    const after = ["charger_code,observed_at,metric,value,unit,temperature_c"];
+    for (let i = 0; i < 4; i++) after.push(`EX-01-B,${new Date(Date.UTC(2026, 5, 20 + i * 7, 9)).toISOString()},contact_resistance,0.301,mΩ,${i === 0 ? "41" : ""}`);
+    const imported = await datasetsPOST(uploadRequest("/api/datasets", { name: "after-cleaning.csv", content: after.join("\n") }, { kind: "observations" }));
+    expect(imported.status).toBe(201);
+    const stored = await getDb().select().from(healthObservations).where(eq(healthObservations.chargerId, id));
+    expect(stored.filter((o) => o.temperatureC === 41)).toHaveLength(1);
+    fleet = (await body<Data<{ rows: { chargerCode: string; outcome: string }[] }>>(await fleetRepairsGET())).data;
+    expect(fleet.rows.find((r) => r.chargerCode === "EX-01-B")!.outcome).toBe("held");
+    const [row] = await getDb().select().from(chargers).where(eq(chargers.id, id));
+    expect(row!.healthSummary!.metrics.find((m) => m.metric === "contact_resistance")!.temperatureCorrection?.applied).toBe(false);
   });
 
   it("maps an unreachable database to a 503 without leaking details", async () => {

@@ -44,6 +44,7 @@ export interface ObservationCandidate {
   observedAt: Date;
   value: number;
   sourceUnit: string;
+  temperatureC: number | null;
   provenance: Provenance;
   source: string | null;
 }
@@ -119,6 +120,13 @@ export function planObservations(
       return reject("value", "Fault counts must be whole numbers.");
     }
 
+    const temp = parseOptionalNumber(get(raw, mapping, "temperature_c"), "Contact temperature");
+    if (!temp.ok) return reject("temperature_c", temp.error);
+    const [tLo, tHi] = ANALYSIS_PARAMS.temperaturePlausibleC;
+    if (temp.value !== null && (temp.value < tLo || temp.value > tHi)) {
+      return reject("temperature_c", `Contact temperature ${temp.value} °C is outside ${tLo}–${tHi} °C.`);
+    }
+
     const provenance = normalizeProvenance(get(raw, mapping, "provenance"), defaultProvenance);
     if (!provenance.ok) return reject("provenance", provenance.error);
 
@@ -144,6 +152,7 @@ export function planObservations(
       observedAt: ts.value,
       value: canonical.value,
       sourceUnit: unitRaw.trim(),
+      temperatureC: temp.value,
       provenance: provenance.value,
       source: cleanText(get(raw, mapping, "source"), 120),
     });

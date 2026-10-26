@@ -44,6 +44,9 @@ curl "http://127.0.0.1:3000/api/recommendations?lat=13.0827&lng=80.2707&connecto
 | GET · PATCH ✎ | `/api/alerts` · `/api/alerts/{id}` | Connector-health alerts; status changes with an optional note |
 | GET | `/api/analytics/overview` · `/quality` · `/evaluation` | Fleet overview, data-quality figures, detector benchmark |
 | POST ✎ | `/api/analytics/recompute` | Re-run the health analysis |
+| GET · POST ✎ | `/api/chargers/{id}/maintenance` | Recorded work on a charger; POST `{ "performedAt", "action": "cleaned" \| "contacts_replaced" \| "connector_replaced" \| "adjusted" \| "other", "note"? }` then re-runs its analysis |
+| PUT ✎ | `/api/chargers/{id}/service-limit` | `{ "contactResistanceLimitMohm": number \| null }` — the forecast target (null = default) |
+| GET | `/api/maintenance` | Every recorded job with its verified outcome, and held rates by kind of work |
 
 ## Data and models
 

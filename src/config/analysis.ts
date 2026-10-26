@@ -49,8 +49,41 @@ export const ANALYSIS_PARAMS = {
   staleAfterDays: 45,
   /** Observations timestamped further than this into the future are rejected. */
   futureToleranceMinutes: 10,
+
+  /* ── Temperature correction (contact resistance and connector voltage drop) ── */
+  /** Readings are restated at this contact temperature so summer and winter readings compare fairly. */
+  temperatureReferenceC: 20,
+  /**
+   * Fractional resistance change per °C. 0.00393 is annealed copper's coefficient; contact
+   * alloys are similar, so this is an approximation the operator can tune.
+   */
+  temperatureCoefficientPerC: 0.00393,
+  /** Recorded contact temperatures outside this range are treated as errors, not corrected. */
+  temperaturePlausibleC: [-40, 150] as readonly [number, number],
+
+  /* ── Service-limit forecast ── */
+  /** Most recent readings (after the latest maintenance) used for the forecast slope. */
+  forecastWindow: 12,
+  /** Fewer readings than this → no forecast. */
+  forecastMinPoints: 6,
+  /** Two-sided confidence level of the Theil–Sen slope interval that sets the date range. */
+  forecastConfidence: 0.8,
+  /** Default service limit when the operator has not set one: baseline median + this fraction. */
+  forecastLimitRelative: 0.5,
+  /** Forecasts further out than this are reported as "more than a year" rather than a date. */
+  forecastHorizonDays: 365,
+  /** A forecast whose earliest date is within this many days becomes an action item. */
+  forecastActionDays: 30,
+
+  /* ── Repair verification ── */
+  /** Readings after a repair needed before "held" can be concluded. */
+  repairVerifyMinReadings: 3,
+  /** …spanning at least this many days. */
+  repairVerifyMinDays: 14,
+  /** A repair that removes at least this share of the excess over baseline counts as a partial improvement. */
+  repairPartialFraction: 0.5,
 } as const;
 
-export const ANALYSIS_VERSION = "2026.10-2";
+export const ANALYSIS_VERSION = "2026.10-3";
 
 export type AnalysisParams = typeof ANALYSIS_PARAMS;

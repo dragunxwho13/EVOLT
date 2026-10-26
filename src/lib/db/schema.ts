@@ -20,6 +20,7 @@ import {
   CONNECTOR_TYPES,
   DATASET_KINDS,
   HEALTH_STATUSES,
+  MAINTENANCE_ACTIONS,
   METRIC_KEYS,
   OPERATIONAL_STATUSES,
   PROVENANCES,
@@ -116,6 +117,8 @@ export const chargers = pgTable(
     healthEvaluatedAt: timestamp("health_evaluated_at", { withTimezone: true }),
     healthSummary: jsonb("health_summary").$type<ChargerHealthSummary>(),
     lastObservationAt: timestamp("last_observation_at", { withTimezone: true }),
+    /** Operator-set contact-resistance service limit (mΩ); the forecast target. Null → default. */
+    contactResistanceLimitMohm: doublePrecision("contact_resistance_limit_mohm"),
     isSynthetic: boolean("is_synthetic").notNull().default(false),
     ...timestamps,
   },
@@ -124,6 +127,10 @@ export const chargers = pgTable(
     index("chargers_station_idx").on(t.stationId),
     index("chargers_health_idx").on(t.healthStatus),
     check("chargers_power_positive", sql`${t.ratedPowerKw} IS NULL OR ${t.ratedPowerKw} > 0`),
+    check(
+      "chargers_cr_limit_range",
+      sql`${t.contactResistanceLimitMohm} IS NULL OR (${t.contactResistanceLimitMohm} > 0 AND ${t.contactResistanceLimitMohm} <= 100)`,
+    ),
   ],
 );
 
@@ -140,6 +147,8 @@ export const healthObservations = pgTable(
     value: doublePrecision("value").notNull(),
     /** Unit as supplied by the source, kept for traceability. */
     sourceUnit: text("source_unit").notNull(),
+    /** Contact temperature when the reading was taken (°C), if recorded. Used for temperature correction. */
+    temperatureC: doublePrecision("temperature_c"),
     provenance: provenanceEnum("provenance").notNull(),
     source: text("source"),
     importId: uuid("import_id").references(() => datasetImports.id, { onDelete: "set null" }),
@@ -148,6 +157,7 @@ export const healthObservations = pgTable(
   (t) => [
     uniqueIndex("health_obs_charger_metric_time_uq").on(t.chargerId, t.metric, t.observedAt),
     index("health_obs_charger_time_idx").on(t.chargerId, t.observedAt),
+    check("health_obs_temperature_range", sql`${t.temperatureC} IS NULL OR (${t.temperatureC} >= -40 AND ${t.temperatureC} <= 150)`),
   ],
 );
 
@@ -294,6 +304,29 @@ export const insightReviews = pgTable("insight_reviews", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Work done on a connector, recorded by a person. EVOLT checks the readings after it to say
+ * whether the work had a measurable effect and whether it lasted.
+ */
+export const maintenanceEvents = pgTable(
+  "maintenance_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    chargerId: uuid("charger_id")
+      .notNull()
+      .references(() => chargers.id, { onDelete: "cascade" }),
+    performedAt: timestamp("performed_at", { withTimezone: true }).notNull(),
+    action: text("action").$type<(typeof MAINTENANCE_ACTIONS)[number]>().notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("maintenance_charger_time_idx").on(t.chargerId, t.performedAt),
+    check("maintenance_action_check", sql.raw(`"action" IN (${MAINTENANCE_ACTIONS.map((a) => `'${a}'`).join(", ")})`)),
+    check("maintenance_note_length", sql`${t.note} IS NULL OR char_length(${t.note}) <= 500`),
+  ],
+);
+
 export const stationsRelations = relations(stations, ({ many }) => ({ chargers: many(chargers) }));
 export const chargersRelations = relations(chargers, ({ one, many }) => ({
   station: one(stations, { fields: [chargers.stationId], references: [stations.id] }),
@@ -321,3 +354,4 @@ export type VehicleProfile = typeof vehicleProfiles.$inferSelect;
 export type SensorReading = typeof sensorReadings.$inferSelect;
 export type ChargingSession = typeof chargingSessions.$inferSelect;
 export type ModelRun = typeof modelRuns.$inferSelect;
+export type MaintenanceEvent = typeof maintenanceEvents.$inferSelect;

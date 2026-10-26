@@ -381,6 +381,7 @@ export async function commitImport(input: ImportInput): Promise<CommitResult> {
                 observedAt: c.observedAt,
                 value: c.value,
                 sourceUnit: c.sourceUnit,
+                temperatureC: c.temperatureC,
                 provenance: c.provenance,
                 source: c.source,
                 importId: record!.id,

@@ -1,9 +1,16 @@
 import { ANALYSIS_PARAMS, ANALYSIS_VERSION, type AnalysisParams } from "@/config/analysis";
 import { HEALTH_LABELS, METRICS, METRIC_KEYS, type HealthStatus, type MetricKey } from "@/config/domain";
-import { assessMetric, worstStatus } from "@/features/anomaly-detection/assess-metric";
+import { assessMetric, worstStatus, type AssessOptions } from "@/features/anomaly-detection/assess-metric";
 import type { ChargerHealthSummary, MetricAssessment, ObservationInput } from "@/types/analysis";
 
 export type ObservationsByMetric = Partial<Record<MetricKey, ObservationInput[]>>;
+
+export interface ChargerAssessOptions {
+  /** Operator-set service limits, per metric, in canonical units. */
+  limits?: Partial<Record<MetricKey, number | null>>;
+  /** Latest recorded maintenance: forecasts only use readings after it. */
+  lastMaintenanceAt?: Date | null;
+}
 
 export const NEXT_ACTIONS: Record<HealthStatus, string> = {
   normal:
@@ -31,6 +38,7 @@ export function assessCharger(
   observations: ObservationsByMetric,
   now: Date,
   params: AnalysisParams = ANALYSIS_PARAMS,
+  options: ChargerAssessOptions = {},
 ): ChargerHealthSummary {
   // Historical data (nothing recent) is still analysed — as of its newest reading — and
   // clearly labelled as historical. It never stands in for the connector's current state.
@@ -48,7 +56,8 @@ export function assessCharger(
   const metrics: MetricAssessment[] = [];
   for (const key of METRIC_KEYS) {
     const obs = observations[key];
-    if (obs && obs.length > 0) metrics.push(assessMetric(key, obs, asOf, params));
+    const metricOptions: AssessOptions = { operatorLimit: options.limits?.[key] ?? null, since: options.lastMaintenanceAt ?? null };
+    if (obs && obs.length > 0) metrics.push(assessMetric(key, obs, asOf, params, metricOptions));
   }
 
   const primary = metrics.filter((m) => !METRICS[m.metric].supporting);

@@ -1,9 +1,9 @@
 import "server-only";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { ANALYSIS_VERSION } from "@/config/analysis";
 import type { AlertStatus } from "@/config/domain";
 import { getDb } from "@/lib/db/client";
-import { alertEvents, alerts, chargers, healthObservations } from "@/lib/db/schema";
+import { alertEvents, alerts, chargers, healthObservations, maintenanceEvents } from "@/lib/db/schema";
 import { conflict, notFound, validationError } from "@/lib/errors";
 import { canTransition, planAlertSync, type ExistingAlert } from "./alert-sync";
 import { assessCharger, type ObservationsByMetric } from "./assess-charger";
@@ -36,14 +36,33 @@ export async function recomputeHealth(chargerIds?: string[], now: Date = new Dat
   for (const chargerId of ids) {
     await db.transaction(async (tx) => {
       const obs = await tx
-        .select({ metric: healthObservations.metric, observedAt: healthObservations.observedAt, value: healthObservations.value })
+        .select({
+          metric: healthObservations.metric,
+          observedAt: healthObservations.observedAt,
+          value: healthObservations.value,
+          temperatureC: healthObservations.temperatureC,
+        })
         .from(healthObservations)
         .where(eq(healthObservations.chargerId, chargerId))
         .orderBy(asc(healthObservations.observedAt));
       const byMetric: ObservationsByMetric = {};
-      for (const o of obs) (byMetric[o.metric] ??= []).push({ observedAt: o.observedAt, value: o.value });
+      for (const o of obs) (byMetric[o.metric] ??= []).push({ observedAt: o.observedAt, value: o.value, temperatureC: o.temperatureC });
 
-      const summary = assessCharger(byMetric, now);
+      const [settings] = await tx
+        .select({ limit: chargers.contactResistanceLimitMohm })
+        .from(chargers)
+        .where(eq(chargers.id, chargerId));
+      const [lastWork] = await tx
+        .select({ at: maintenanceEvents.performedAt })
+        .from(maintenanceEvents)
+        .where(and(eq(maintenanceEvents.chargerId, chargerId), sql`${maintenanceEvents.performedAt} <= ${now}`))
+        .orderBy(desc(maintenanceEvents.performedAt))
+        .limit(1);
+
+      const summary = assessCharger(byMetric, now, undefined, {
+        limits: { contact_resistance: settings?.limit ?? null },
+        lastMaintenanceAt: lastWork?.at ?? null,
+      });
       const findings = summary.metrics.flatMap((m) => m.findings);
 
       const existing = await tx

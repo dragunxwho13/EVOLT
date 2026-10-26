@@ -9,7 +9,16 @@ import type {
   QualityFlag,
 } from "@/types/analysis";
 import { formatMetricValue, formatNumber, formatPercent } from "@/lib/utils/format";
+import { forecastServiceLimit } from "./forecast";
 import { median, robustScale, theilSen } from "./stats";
+import { applyTemperatureCorrection } from "./temperature";
+
+export interface AssessOptions {
+  /** Operator-set service limit in the metric's canonical unit (forecast target). */
+  operatorLimit?: number | null;
+  /** Latest maintenance: the forecast only uses readings after it. */
+  since?: Date | null;
+}
 
 const DAY_MS = 86_400_000;
 
@@ -131,10 +140,13 @@ export function assessMetric(
   observations: readonly ObservationInput[],
   now: Date,
   params: AnalysisParams = ANALYSIS_PARAMS,
+  options: AssessOptions = {},
 ): MetricAssessment {
   const def = METRICS[metric];
-  const { points, flags, excluded } = cleanSeries(metric, observations, now, params);
+  const correction = applyTemperatureCorrection(metric, observations, params);
+  const { points, flags, excluded } = cleanSeries(metric, correction.observations, now, params);
   const notes: string[] = [];
+  if (correction.info && (correction.info.applied || correction.info.withTemperature > 0)) notes.push(correction.info.explanation);
   const base: MetricAssessment = {
     metric,
     status: "insufficient_data",
@@ -146,6 +158,8 @@ export function assessMetric(
     findings: [],
     qualityFlags: flags,
     notes,
+    temperatureCorrection: correction.info,
+    forecast: null,
   };
 
   if (points.length === 0) {
@@ -175,6 +189,19 @@ export function assessMetric(
   }
 
   const findings = metric === "fault_count" ? assessFaults(points, params, notes) : assessContinuous(metric, points, params, notes, base);
+  if (def.forecast && !def.supporting) {
+    base.forecast = forecastServiceLimit({
+      metric,
+      points,
+      baselineMedian: base.baseline?.median ?? null,
+      operatorLimit: options.operatorLimit ?? null,
+      since: options.since ?? null,
+      params,
+    });
+    if (base.forecast && stale) {
+      base.forecast.explanation += ` The newest reading is ${Math.floor(ageDays)} days old, so the connector may already be past this point.`;
+    }
+  }
   if (findings === null) {
     flags.push({ code: "insufficient_history", message: notes[notes.length - 1] ?? "Insufficient history." });
     return base;

@@ -12,7 +12,7 @@ first, and why.
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-145%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-171%20passing-2ea44f)
 ![External APIs](https://img.shields.io/badge/external%20APIs-none-6e7781)
 
 [Quick start](#-quick-start) · [For judges](#-a-2-minute-tour-for-judges) · [Features](#-what-it-does) · [How it works](#-how-it-works) · [Documentation](#-documentation)
@@ -37,6 +37,8 @@ EVOLT turns charging data into two focused experiences built on one database:
 |---|---|
 | Find compatible chargers nearby, ranked so the ones with healthy evidence come first, and see them on a map with the **best match starred** | See prioritised **action items**, each with its evidence, the rule that fired, why it matters and the next step |
 | Compare up to four chargers side by side; click any map pin to see the chargers at that spot | A **fleet map** coloured by connector health; track station performance and export the station table |
+| | A **service forecast**: when each connector will reach its contact-resistance limit, with a range, from temperature-corrected readings |
+| | **Repair checks**: after recorded work, whether readings returned to normal and whether the fix held |
 | Read a plain-English reason for every recommendation | Record decisions (reviewed / resolved / dismissed); they are stored in the database |
 
 > **Every number is computed from stored records.** Nothing is hard-coded or shown as live
@@ -75,7 +77,7 @@ company**; each view links to the other.
 1. Installs dependencies (internet needed once, a few minutes).
 2. Creates `.env.local` and starts a private PostgreSQL 17 instance in `.evolt/` (no installation).
 3. Applies the database migrations.
-4. Loads 12 labelled **demo** stations.
+4. Loads 13 labelled **demo** stations.
 5. Imports the supplied session dataset through the normal import pipeline and trains the models.
 6. Builds and starts the app.
 
@@ -120,6 +122,8 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 | 4 | **Action items** → open any item | Evidence, triggering rule, why it matters, next step; mark it reviewed and it persists |
 | 5 | **Performance** | Station table with uncertainty intervals and CSV export; the takeaways say when a difference is just noise |
 | 6 | **Learned model** → type `4.2` → **Classify** | A live prediction from the stored model, with its rule and tested accuracy |
+| 7 | **Service forecast** → open **DEMO-13-C2** | Likely service date with its range and the limit line; readings restated at 20 °C. **DEMO-13-C3** rose only because it was measured hot, and is not flagged |
+| 8 | **Repair checks** | One cleaning held, one relapsed after about a month; record new work on a charger page and set your own service limit |
 
 ---
 
@@ -161,6 +165,8 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 | **Fleet map** | Every located station coloured by its most concerning charger, with health filters, a needs-attention list, and popups showing chargers, alerts and open items |
 | **Action items** | What is happening · why it matters · what to do next · which rule fired · priority · confidence |
 | **Performance** | How each station performed, with intervals; filter, sort, export CSV |
+| **Service forecast** | Which connector reaches its service limit next, the likely date and an 80% range; no date unless the rise is statistically clear |
+| **Repair checks** | Each recorded job checked against later readings (held, relapsed, partly improved, no effect) and the held rate per kind of work |
 | **Chargers / Health alerts** | Per-charger evidence charts; acknowledge, resolve or dismiss alerts |
 | **Learned model** | What the model can and cannot predict, plus a live classifier |
 | **Data import** | Drag-and-drop CSV/JSON with auto-detection, column mapping, validation and data-quality findings |
@@ -176,6 +182,24 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 <img src="docs/images/company-action-item.png" alt="An action item expanded to show evidence, rule and workflow" width="800" />
 
 <img src="docs/images/company-performance.png" alt="Station performance with intervals and a sortable table" width="800" />
+
+</details>
+
+<details>
+<summary><b>🔧 Connector wear: temperature, forecasts and repair checks</b> — what other platforms leave out</summary>
+
+<br/>
+
+Charging-management platforms typically alert when a threshold is crossed. EVOLT follows the
+connector's contact resistance over time and answers three further questions:
+
+| Question | How |
+|---|---|
+| **Is this rise real, or just a hot day?** | Readings that record the contact temperature are restated at 20 °C (copper, 0.393 %/°C). Correction is all-or-nothing per metric, so it never creates jumps. |
+| **When will it need service?** | Theil–Sen rate since the last recorded maintenance, with Sen's 80 % interval → likely date and range to the operator's limit (default: baseline + 50 %). No date unless the rise is statistically clear. |
+| **Did the repair work, and did it last?** | Readings after each recorded job are compared with the connector's own normal range → *held*, *relapsed*, *partly improved* or *no measurable effect*, plus a held rate per kind of work. |
+
+Details and every threshold → [docs/analytics.md](docs/analytics.md#temperature-correction).
 
 </details>
 
@@ -268,15 +292,15 @@ Full breakdown and design decisions → [docs/architecture.md](docs/architecture
 </details>
 
 <details>
-<summary><b>Quality and testing</b> — 145 automated tests</summary>
+<summary><b>Quality and testing</b> — 171 automated tests</summary>
 
 <br/>
 
 | Suite | Count | Covers |
 |---|---|---|
-| Unit | 99 | Metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security |
-| Integration | 22 | Real API handlers + PostgreSQL: imports, reviews, CSV export, predictions, access control |
-| End-to-end | 24 | Both user journeys in Chromium (desktop + mobile), maps and popups, regressions, wording checks |
+| Unit | 122 | Metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security, temperature correction, forecasts, repair outcomes |
+| Integration | 23 | Real API handlers + PostgreSQL: imports, reviews, CSV export, predictions, access control, service limits, maintenance and repair verification |
+| End-to-end | 26 | Both user journeys in Chromium (desktop + mobile), maps and popups, forecasts and repair checks, regressions, wording checks |
 
 ```bash
 npm run lint && npm run typecheck && npm run test:unit

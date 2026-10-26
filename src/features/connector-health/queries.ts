@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { alertEvents, alerts, chargers, healthObservations, sensorReadings, stations } from "@/lib/db/schema";
+import { alertEvents, alerts, chargers, healthObservations, maintenanceEvents, sensorReadings, stations } from "@/lib/db/schema";
 import { notFound } from "@/lib/errors";
 import type { AlertQuery, ChargerQuery } from "@/lib/validation/schemas";
 
@@ -56,7 +56,7 @@ export async function getChargerDetail(id: string, observationLimit = 500) {
     .innerJoin(stations, eq(stations.id, chargers.stationId))
     .where(eq(chargers.id, id));
   if (!row) throw notFound("Charger");
-  const [observations, chargerAlerts, sensors, total] = await Promise.all([
+  const [observations, chargerAlerts, sensors, total, maintenance] = await Promise.all([
     db
       .select()
       .from(healthObservations)
@@ -75,6 +75,7 @@ export async function getChargerDetail(id: string, observationLimit = 500) {
       .from(healthObservations)
       .where(eq(healthObservations.chargerId, id))
       .then((r) => r[0]?.total ?? 0),
+    db.select().from(maintenanceEvents).where(eq(maintenanceEvents.chargerId, id)).orderBy(asc(maintenanceEvents.performedAt)),
   ]);
   return {
     charger: row.charger,
@@ -83,6 +84,7 @@ export async function getChargerDetail(id: string, observationLimit = 500) {
     observationTotal: total,
     alerts: chargerAlerts,
     sensorReadings: sensors,
+    maintenance,
   };
 }
 

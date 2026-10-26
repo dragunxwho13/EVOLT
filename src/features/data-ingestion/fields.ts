@@ -30,6 +30,7 @@ export const DATASET_FIELDS: Record<DatasetKind, FieldDef[]> = {
     { key: "metric", label: "Metric", required: true, aliases: ["measurement", "parameter", "quantity"], description: "contact_resistance, voltage_drop, fault_count or temperature_rise." },
     { key: "value", label: "Value", required: true, aliases: ["reading", "measurement_value", "val"], description: "Numeric value. Empty values are rejected, never treated as zero." },
     { key: "unit", label: "Unit", required: true, aliases: ["units", "uom"], description: "Unit of the value; converted to the metric's canonical unit." },
+    { key: "temperature_c", label: "Contact temperature (°C)", required: false, aliases: ["temperature", "temp_c", "contact_temperature", "contact_temp_c", "measured_temperature_c", "temp"], description: "Contact temperature when measured, in °C. When every reading has one, resistance and voltage drop are restated at 20 °C." },
     { key: "provenance", label: "Provenance", required: false, aliases: ["data_type", "origin", "data_origin"], description: "observed, derived, estimated or sample." },
     { key: "source", label: "Source", required: false, aliases: ["source_name", "instrument", "device"], description: "Free-text source, e.g. instrument or system name." },
   ],
