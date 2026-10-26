@@ -22,6 +22,13 @@ an alert.
 > **Safety:** never connect the bench circuit to a live charger, a vehicle inlet or any
 > high-voltage or high-current conductor.
 
+## The recorded run and its scaling
+
+The three-connector run (`database/data/raw/degradation_data.xlsx`) is stored in the database
+and analysed on the **Arduino bench** page, which scales it to representative chargers
+parameter by parameter. Formulas, assumptions, references and calibration requirements:
+[scaling.md](scaling.md).
+
 ## Engineering motivation (references)
 
 1. Pieszka-Lyson et al. (2024), *Determination of Contact Resistance of Thermal Interface

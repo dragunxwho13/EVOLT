@@ -108,6 +108,19 @@ An identical file (same SHA-256) can only be imported successfully once.
 
 The demo stations, the example files and the supplied session dataset use this value.
 
+### Bundled data files (`database/data/`)
+
+| File | What it is |
+|---|---|
+| `raw/degradation_data.xlsx` | The Arduino bench log as delivered (unchanged) |
+| `arduino-bench-readings.csv` | The same cells, converted to CSV; loaded into `bench_readings` |
+| `unified-evolt-arduino-training-dataset.csv` | The unified training dataset (1,000 rows, all derived from the charging sessions — see [machine learning](machine-learning.md)) |
+| `SHA256SUMS` | Checksums; the tests verify the bench CSV against it |
+
+The unified training file can also be imported on **Data import** as a session file; its
+`connector_type` value "Simulation" is not a connector standard, so sessions are kept with
+connector "Not recorded" and a warning.
+
 ## Database tables
 
 | Table | Purpose | Key constraints |
@@ -115,6 +128,7 @@ The demo stations, the example files and the supplied session dataset use this v
 | `stations` | Charging sites | unique `code`; both coordinates or neither, within valid ranges |
 | `chargers` | Chargers/connectors, with the latest health status, full assessment (`health_summary` JSON, including forecasts and temperature correction) and optional `contact_resistance_limit_mohm` | unique `code`; FK → stations (cascade); power > 0; limit 0–100 mΩ |
 | `health_observations` | Measurements in canonical units, with source unit, optional `temperature_c`, provenance and import | unique (`charger_id`, `metric`, `observed_at`); FK → chargers, dataset_imports; temperature −40–150 °C |
+| `bench_readings` | Arduino experimental-circuit log, one row per connector and time step, exactly as logged (`voltage_v`, `current_ma`, `degradation_pct` nullable), with source row, file and SHA-256 | unique (`run_id`, `connector`, `time_s`); connector in C1–C3 |
 | `maintenance_events` | Work recorded on a connector (`performed_at`, `action`, `note`), used for repair verification and to restart forecasts | FK → chargers (cascade); action in the five allowed values; note ≤ 500 chars |
 | `alerts` | Explainable alerts with evidence JSON, thresholds, confidence note, suggested action | at most one open/acknowledged alert per (`charger_id`, `metric`, `rule`) |
 | `alert_events` | Status history of each alert (with optional note) | FK → alerts |

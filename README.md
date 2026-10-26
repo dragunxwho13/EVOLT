@@ -12,7 +12,7 @@ first, and why.
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-171%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-190%20passing-2ea44f)
 ![External APIs](https://img.shields.io/badge/external%20APIs-none-6e7781)
 
 [Quick start](#-quick-start) · [For judges](#-a-2-minute-tour-for-judges) · [Features](#-what-it-does) · [How it works](#-how-it-works) · [Documentation](#-documentation)
@@ -78,7 +78,7 @@ company**; each view links to the other.
 2. Creates `.env.local` and starts a private PostgreSQL 17 instance in `.evolt/` (no installation).
 3. Applies the database migrations.
 4. Loads 13 labelled **demo** stations.
-5. Imports the supplied session dataset through the normal import pipeline and trains the models.
+5. Stores the Arduino bench log unchanged, then imports the supplied session dataset through the normal import pipeline and trains the models.
 6. Builds and starts the app.
 
 Later starts take seconds and keep your data. Launcher options: `--rebuild`, `--no-seed`,
@@ -124,6 +124,7 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 | 6 | **Learned model** → type `4.2` → **Classify** | A live prediction from the stored model, with its rule and tested accuracy |
 | 7 | **Service forecast** → open **DEMO-13-C2** | Likely service date with its range and the limit line; readings restated at 20 °C. **DEMO-13-C3** rose only because it was measured hot, and is not flagged |
 | 8 | **Repair checks** | One cleaning held, one relapsed after about a month; record new work on a charger page and set your own service limit |
+| 9 | **Arduino bench** | C1, C2 and C3 side by side; pick a charger to see each quantity scaled (Arduino reading → method → estimate → published reference); type `2.2` in the calibration |
 
 ---
 
@@ -168,7 +169,8 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 | **Service forecast** | Which connector reaches its service limit next, the likely date and an 80% range; no date unless the rise is statistically clear |
 | **Repair checks** | Each recorded job checked against later readings (held, relapsed, partly improved, no effect) and the held rate per kind of work |
 | **Chargers / Health alerts** | Per-charger evidence charts; acknowledge, resolve or dismiss alerts |
-| **Learned model** | What the model can and cannot predict, plus a live classifier |
+| **Learned model** | What the model can and cannot predict, plus a live classifier and the degradation study |
+| **Arduino bench** | The three bench connectors side by side, the parameter-by-parameter scaling table, heat and loss-share charts, real-wear physics, and the bench calibration |
 | **Data import** | Drag-and-drop CSV/JSON with auto-detection, column mapping, validation and data-quality findings |
 
 **Priority** follows explicit rules:
@@ -182,6 +184,29 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 <img src="docs/images/company-action-item.png" alt="An action item expanded to show evidence, rule and workflow" width="800" />
 
 <img src="docs/images/company-performance.png" alt="Station performance with intervals and a sortable table" width="800" />
+
+</details>
+
+<details>
+<summary><b>🔌 Arduino bench → real charger</b> — what the prototype measures, and what it means at charger scale</summary>
+
+<br/>
+
+Our small experimental circuit logs three connectors (C1–C3). EVOLT stores those readings
+unchanged, measures the circuit from them (270 Ω load, 4.21 V healthy, 2.20 V worn) and scales
+each quantity by its own law — voltage × k_V, current × k_I, resistance × k_V/k_I, power × k_V·k_I;
+ratios unchanged; temperature only with a calibrated thermal resistance.
+
+| Finding | Evidence |
+|---|---|
+| The worn bench state is a **fault** at charger scale | ≈ 110 V lost and ≈ 1.8 kW of heat in one connector at 7.4 kW AC (Method A) |
+| Real wear is **below the bench's resolution** | a new CCS2 contact is ≤ 0.5 mΩ (datasheet); at 7.4 kW AC wear becomes visible on the 4.88 mV ADC step only at ≈ 10 mΩ (Method B) |
+| The three connectors behave almost alike | 0.07-point average gap; only C2 reads 2.2 % lower when healthy |
+| Degradation in the supplied training file is a **formula** | = clip(100 × loss ÷ consumed); no degradation predictor is deployed from it |
+
+Every value is tagged **Experimental circuit**, **Real-world estimate** or **Commercial reference**
+(IEC 62196-1, MIDA and HARTING datasheets, ADAC tests). Details → [docs/scaling.md](docs/scaling.md)
+and [docs/machine-learning.md](docs/machine-learning.md#connector-degradation-what-can-and-cannot-be-predicted).
 
 </details>
 
@@ -279,9 +304,11 @@ Haversine formula on stored coordinates.
 ```text
 src/app/            Entry page · /driver · /company · /api route handlers
 src/features/       recommendations · insights · sessions · anomaly-detection ·
-                    connector-health · learning · data-ingestion  (pure, tested logic)
+                    connector-health · learning · data-ingestion · bench  (pure, tested logic)
+src/config/         analysis thresholds · scaling assumptions and references
 src/components/     UI: driver, insights, charts, primitives
-database/           SQL migrations · demo seed · dataset loader
+database/           SQL migrations · demo seed · dataset and bench loaders · data/ (raw files)
+models/             saved model reports (session classifiers, degradation study + calibration)
 scripts/            One-click launcher · offline model training
 tests/              unit · integration · e2e
 docs/               Detailed documentation (below)
@@ -292,15 +319,15 @@ Full breakdown and design decisions → [docs/architecture.md](docs/architecture
 </details>
 
 <details>
-<summary><b>Quality and testing</b> — 171 automated tests</summary>
+<summary><b>Quality and testing</b> — 190 automated tests</summary>
 
 <br/>
 
 | Suite | Count | Covers |
 |---|---|---|
-| Unit | 122 | Metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security, temperature correction, forecasts, repair outcomes |
-| Integration | 23 | Real API handlers + PostgreSQL: imports, reviews, CSV export, predictions, access control, service limits, maintenance and repair verification |
-| End-to-end | 26 | Both user journeys in Chromium (desktop + mobile), maps and popups, forecasts and repair checks, regressions, wording checks |
+| Unit | 138 | Metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security, temperature correction, forecasts, repair outcomes, bench parsing, scaling laws, contact physics, degradation study and calibration, model reproducibility |
+| Integration | 24 | Real API handlers + PostgreSQL: imports, reviews, CSV export, predictions, access control, service limits, maintenance and repair verification, raw bench storage and the bench APIs |
+| End-to-end | 28 | Both user journeys in Chromium (desktop + mobile), maps and popups, forecasts and repair checks, the Arduino bench page and estimator, regressions, wording checks |
 
 ```bash
 npm run lint && npm run typecheck && npm run test:unit
@@ -337,7 +364,9 @@ What was and was not verified → [docs/testing.md](docs/testing.md).
 | [Testing](docs/testing.md) | Test suites, last verified run, what is not verified |
 | [Deployment](docs/deployment.md) | Vercel + managed PostgreSQL |
 | [Hardware bench](docs/hardware.md) | Optional Arduino low-voltage demo |
+| [Bench scaling](docs/scaling.md) | Arduino → real-world scaling formulas, assumptions, references and calibration needs |
 | [Change report](docs/CHANGE_REPORT.md) | Bugs fixed, features changed, verification |
+| [Verification report](docs/VERIFICATION.md) | What was tested for the bench, scaling and model work, and what was not |
 
 <div align="center">
 <sub>Research prototype · No licence declared yet — all rights reserved by the author · See <a href="CONTRIBUTING.md">CONTRIBUTING.md</a></sub>

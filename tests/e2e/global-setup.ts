@@ -11,10 +11,11 @@ export default async function globalSetup() {
   const pool = new Pool({ connectionString: url, max: 1 });
   try {
     await pool.query(
-      "truncate table insight_reviews, model_runs, charging_sessions, alert_events, alerts, sensor_readings, health_observations, chargers, stations, dataset_imports, vehicle_profiles restart identity cascade",
+      "truncate table bench_readings, insight_reviews, model_runs, charging_sessions, alert_events, alerts, sensor_readings, health_observations, chargers, stations, dataset_imports, vehicle_profiles restart identity cascade",
     );
   } finally {
     await pool.end();
   }
   execFileSync("npx", ["tsx", "--conditions=react-server", "database/seed/seed.ts"], { env, stdio: "inherit" });
+  execFileSync("npx", ["tsx", "--conditions=react-server", "database/seed/bench.ts"], { env, stdio: "inherit" });
 }

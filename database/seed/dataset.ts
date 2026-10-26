@@ -1,5 +1,6 @@
 /**
- * Loads the supplied charging-session dataset (public/samples/ev-charging-grid-sessions.csv)
+ * Loads the Arduino experimental-circuit log into bench_readings (see bench.ts), then the
+ * supplied charging-session dataset (public/samples/ev-charging-grid-sessions.csv)
  * through the same import pipeline the Data import page uses: validation, duplicate checks,
  * charger creation, health analysis and model training.
  *
@@ -19,6 +20,8 @@ const FILE = "public/samples/ev-charging-grid-sessions.csv";
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set.");
+  const { loadBench } = await import("./bench");
+  console.info(await loadBench(process.env.DATABASE_URL));
   const { commitImport, dataInventory } = await import("../../src/features/data-ingestion/service");
   const { latestReports, trainModels } = await import("../../src/features/learning/service");
 

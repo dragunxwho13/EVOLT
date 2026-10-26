@@ -112,6 +112,62 @@ Router, PostgreSQL with Drizzle, Zod, and the existing analysis, ingestion and l
 - Verified 26 Oct 2026: lint, typecheck and build clean; 122/122 unit, 23/23 integration,
   26/26 end-to-end.
 
+## 4d. Arduino bench, real-world scaling and degradation model (added 26 Oct 2026)
+
+**Audit findings (before coding)**
+
+- The Arduino bench log (`degradation_data.xlsx`, 95 × 3 connectors) is the only measured
+  data. Its current equals V ÷ 270 Ω and its degradation equals 100 × (1 − V ÷ 4.0 V): one
+  independent signal (voltage).
+- The new unified training dataset (1,000 rows) is entirely derived from the charging sessions:
+  `C1_V` = `voltage_level`, `C1_mA` = 340 × current, `C1_Deg_pct` = clip(100 × loss ÷ consumed),
+  C2/C3 = C1 × fixed factors, `connector_type` = "Simulation". It has no independent
+  degradation label.
+- Bug: importing that file on **Data import** rejected all 1,000 rows because the optional
+  `connector_type` held a non-standard value.
+
+**Bugs fixed**
+
+| # | Bug | Fix |
+|---|---|---|
+| 1 | An unrecognised value in a session file's optional connector column rejected the whole session (the unified file: 0 of 1,000 accepted) | Sessions are kept with connector "Not recorded" and the import shows a warning naming the value; tested |
+| 2 | Log-scale bar charts on the new page cut off the smallest bar | Explicit decade bounds on the axis |
+
+**Features added**
+
+- `bench_readings` table (migration `0005`), `npm run db:seed:bench` (also run by the launcher
+  and the end-to-end setup). Values stored exactly as logged, with source row, file and
+  SHA-256; a changed file is refused rather than merged.
+- `src/config/scaling.ts`: scenarios, assumptions and sourced references (IEC 62196-1, MIDA and
+  HARTING datasheets, ADAC tests).
+- `src/features/bench/`: parsing, reading classification, per-connector summaries,
+  parameter-specific scaling (Method A proportional, Method B contact physics), insight cards.
+- **Arduino bench** page: three connectors side by side, the requested comparison table
+  (Arduino reading · method/factor · scaled estimate · commercial reference · difference),
+  heat and loss-share charts, the Method B table with bench visibility, the calibration
+  estimator, assumptions and references.
+- `src/features/learning/degradation.ts` + `npm run model:degradation`: dataset audit,
+  station-grouped and time-ordered regression study (baseline vs ridge, MAE/RMSE/R²), bench
+  calibration saved to `models/degradation-report.json`, re-fitted from the database on every
+  page load, served by `/api/bench/estimate` (bench volts only). Shown on **Learned model**.
+- Docs: `docs/scaling.md`, a degradation section in `docs/machine-learning.md`.
+
+**Files modified:** `src/lib/db/schema.ts`, `src/features/data-ingestion/plan.ts`,
+`src/components/layout/nav.tsx`, `src/app/company/model/page.tsx`, `database/seed/dataset.ts`,
+`database/migrations/meta/_journal.json`, `package.json`, `tests/e2e/app.spec.ts`,
+`tests/e2e/global-setup.ts`, `tests/integration/api.test.ts`, `tests/integration/setup.ts`,
+`tests/unit/sessions-import.test.ts`, `README.md`, `docs/*.md`.
+**Files added:** `database/data/**`, `database/migrations/0005_bench_readings.sql`,
+`database/seed/bench.ts`, `src/config/scaling.ts`, `src/features/bench/*`,
+`src/features/learning/degradation.ts`, `src/app/company/bench/page.tsx`,
+`src/app/api/bench/**`, `src/components/bench/*`, `src/components/model/degradation-study.tsx`,
+`scripts/train-degradation.ts`, `models/degradation-report.json`, `tests/unit/bench.test.ts`,
+`docs/scaling.md`.
+
+**Not done, deliberately:** no degradation predictor from the unified dataset (its target is a
+formula of its inputs); no temperature estimate (no calibrated thermal resistance); no field
+wear rate (none verified).
+
 ## 5. Verification (tests actually run on 25 Oct 2026, Linux sandbox)
 
 | Check | Result |

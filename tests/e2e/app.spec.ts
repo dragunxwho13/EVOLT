@@ -325,7 +325,7 @@ test.describe("data import, analytics and model", () => {
   });
 
   test("no page labels data as synthetic or simulated", async ({ page }) => {
-    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings", "/company/forecasts", "/company/maintenance"]) {
+    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings", "/company/forecasts", "/company/maintenance", "/company/bench"]) {
       await page.goto(url);
       await page.waitForLoadState("networkidle");
       expect(await page.locator("body").innerText(), url).not.toMatch(/synthetic|simulated/i);
@@ -344,12 +344,46 @@ test.describe("data import, analytics and model", () => {
   });
 });
 
+test.describe("Arduino bench and model", () => {
+  test("shows three connectors separately, scales a reading and runs the calibration", async ({ page }) => {
+    await page.goto("/company/bench");
+    await expect(page.getByRole("heading", { name: "Arduino bench & real-world scaling" })).toBeVisible();
+    const connectors = page.getByRole("table", { name: "Per-connector comparison" });
+    for (const c of ["C1", "C2", "C3"]) await expect(connectors.getByRole("columnheader", { name: c })).toBeVisible();
+    await expect(page.getByText(/C2 reads lower than the others in the healthy window/)).toBeVisible();
+    await expect(page.getByRole("img", { name: /Voltage of connectors C1, C2 and C3/ })).toBeVisible();
+
+    const table = page.getByRole("table", { name: "Scaling comparison" });
+    await expect(table.getByRole("rowheader", { name: "Extra series resistance in the worn connector" })).toBeVisible();
+    await expect(table.getByText(/MIDA datasheet/).first()).toBeVisible();
+    await page.getByLabel("Representative charger (assumption)").selectOption("ac-22");
+    await page.getByLabel("Bench connector").selectOption("C3");
+    await page.getByRole("button", { name: "Recalculate" }).click();
+    await expect(page).toHaveURL(/scenario=ac-22&connector=C3/);
+    await expect(page.getByText(/Scaled to AC 22 kW/)).toBeVisible();
+
+    await page.getByLabel(/Bench voltage on C3/).fill("2.2");
+    await page.getByRole("button", { name: "Estimate" }).click();
+    await expect(page.getByText(/Bench degradation index: 45/)).toBeVisible();
+    await page.getByLabel(/Bench voltage on C3/).fill("230");
+    await page.getByRole("button", { name: "Estimate" }).click();
+    await expect(page.getByText(/230 V is not a bench reading/)).toBeVisible();
+  });
+
+  test("the model page states what degradation can and cannot be predicted", async ({ page }) => {
+    await page.goto("/company/model");
+    await expect(page.getByRole("heading", { name: "Can connector degradation be predicted?" })).toBeVisible();
+    await expect(page.getByText(/are a formula, not a measurement/)).toBeVisible();
+    await expect(page.getByText(/no degradation predictor is deployed from it/)).toBeVisible();
+  });
+});
+
 test.describe("regressions", () => {
   test("moving between company pages never crashes", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("/company");
-    for (const link of ["Data import", "Overview", "Performance", "Service forecast", "Repair checks", "Overview", "Settings", "Overview"]) {
+    for (const link of ["Data import", "Overview", "Performance", "Service forecast", "Repair checks", "Arduino bench", "Overview", "Settings", "Overview"]) {
       await page.getByRole("link", { name: link, exact: true }).first().click();
       await page.waitForLoadState("networkidle");
       await expect(page.getByText("This page could not be displayed")).toHaveCount(0);

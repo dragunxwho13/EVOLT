@@ -67,3 +67,67 @@ All results use 5-fold cross-validation and were cross-checked with scikit-learn
 
 Results describe this file only. It contains physically inconsistent records (see
 [analytics](analytics.md)), so these accuracies are not evidence about real chargers.
+
+## Connector degradation: what can and cannot be predicted
+
+Reproduce with `npm run model:degradation` (writes `models/degradation-report.json`; a unit
+test checks the committed file equals a fresh run). Code: `src/features/learning/degradation.ts`.
+
+### The unified training dataset
+
+`database/data/unified-evolt-arduino-training-dataset.csv` (1,000 rows, 36 columns, no missing
+cells, no duplicate ids). The audit shows every Arduino-style column is **derived from the
+session columns**:
+
+| Column | Is exactly |
+|---|---|
+| `C1_V` | `voltage_level` |
+| `C1_mA` | 340 × `current_flow` |
+| `C1_Deg_pct` | clip(100 × `power_loss` ÷ `power_consumed`, 0, 100) — 35 rows clipped at 100 % because loss exceeds consumption |
+| `C2_*`, `C3_*` | `C1_*` × fixed factors (0.998 / 1.002 voltage, 0.971 current, 0.98 / 1.02 degradation) |
+| `Avg_Deg_pct` | mean of C1–C3 degradation |
+
+So the "degradation" target is a formula of two input columns, not an independent label.
+
+### Study design (leakage-aware)
+
+- Target `Avg_Deg_pct`; regression metrics MAE, RMSE, R² (percentage points).
+- **Device-aware:** 5-fold cross-validation grouped by station — a station's sessions are never
+  in both training and test. **Time-aware:** train on the earliest 80 %, test on the latest 20 %.
+- Baseline = median of the training rows; model = ridge regression on standardised features (λ = 1).
+- Three feature sets, each answering one question. The C1–C3 columns are never used as
+  features (they are copies of the target or of session columns).
+
+| Features | Test split | Baseline MAE | Ridge MAE | Ridge RMSE | Ridge R² |
+|---|---|---|---|---|---|
+| Loss and consumption (the target's own inputs) | Held-out stations (5-fold grouped) | 17.08 | 0.07 | 0.11 | 1.000 |
+| Loss and consumption (the target's own inputs) | Latest 20 % in time | 16.38 | 0.07 | 0.10 | 1.000 |
+| All session measurements except power loss | Held-out stations (5-fold grouped) | 17.08 | 12.53 | 16.40 | 0.547 |
+| All session measurements except power loss | Latest 20 % in time | 16.38 | 12.05 | 15.38 | 0.549 |
+| …and without current or power (which sit in the target's denominator) | Held-out stations (5-fold grouped) | 17.08 | 18.29 | 24.46 | -0.007 |
+| …and without current or power (which sit in the target's denominator) | Latest 20 % in time | 16.38 | 18.25 | 23.45 | -0.048 |
+
+**Reading it:** with the target's own inputs the "model" is perfect because it is the
+definition. Without power loss, R² ≈ 0.55 comes only from current and power, which sit in the
+formula's denominator — arithmetic, not wear. Without those, nothing beats the baseline. **No
+degradation predictor is deployed from this dataset**; doing so would present a formula as a
+forecast.
+
+### What is deployed: the bench calibration
+
+The only measured degradation signal is the bench voltage. Least squares on the 219
+logged readings at or below 4.0 V gives
+
+```
+degradation % = 99.93 − 24.97 × V     (log's definition: 100 − 25 × V)
+```
+
+Held-out error: 0.07 points MAE on held-out time blocks (fit on one half of the run,
+test on the other); leaving one connector out: C1 0.07 · C2 0.06 · C3 0.06 points. It is saved in
+`models/degradation-report.json`, re-fitted from the database on every bench-page load (the page
+says whether they match), and served by `GET /api/bench/estimate?voltage=…`.
+
+**Input scale:** experimental-circuit volts only (≤ 5 V). Real-charger voltages are refused with
+an error — the calibration describes the bench's index, not real connector wear, and scaling
+electrical readings does not scale degradation. The real-world consequence of a bench state is
+shown separately by the scaling (see [scaling.md](scaling.md)).

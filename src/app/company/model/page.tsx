@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { DistributionChart } from "@/components/model/distribution-chart";
 import { ClassifyForm } from "@/components/model/classify-form";
+import { DegradationStudy } from "@/components/model/degradation-study";
 import { RetrainButton } from "@/components/model/retrain-button";
 import { ButtonLink, EmptyState, ErrorState, PageHeader, Panel, PanelSkeleton } from "@/components/ui/primitives";
 import { humanize } from "@/features/learning/train";
@@ -25,6 +26,7 @@ export default function ModelPage() {
       <Suspense fallback={<PanelSkeleton rows={10} />}>
         <ModelContent />
       </Suspense>
+      <DegradationStudy />
     </>
   );
 }
