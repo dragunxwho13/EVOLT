@@ -13,9 +13,12 @@ first, and why.
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-190%20passing-2ea44f)
+[![Live demo](https://img.shields.io/badge/live%20demo-evolt--ev.vercel.app-000000?logo=vercel&logoColor=white)](https://evolt-ev.vercel.app)
 ![External APIs](https://img.shields.io/badge/external%20APIs-none-6e7781)
 
-[Quick start](#-quick-start) · [For judges](#-a-2-minute-tour-for-judges) · [Features](#-what-it-does) · [How it works](#-how-it-works) · [Documentation](#-documentation)
+**[▶ Open the live demo](https://evolt-ev.vercel.app)**
+
+[Live demo](#-live-demo) · [Quick start](#-quick-start) · [For judges](#-a-2-minute-tour-for-judges) · [Features](#-what-it-does) · [How it works](#-how-it-works) · [Documentation](#-documentation)
 
 <img src="docs/images/entry.png" alt="EVOLT entry page with a choice between the driver and company experiences" width="900" />
 
@@ -54,6 +57,24 @@ EVOLT turns charging data into two focused experiences built on one database:
 <td align="center"><sub><b>Company</b> — what needs attention first</sub></td>
 </tr>
 </table>
+
+---
+
+## 🌐 Live demo
+
+**https://evolt-ev.vercel.app** — no install, no sign-up.
+
+| | |
+|---|---|
+| **Hosting** | Vercel (functions in Singapore, `sin1`) + Neon PostgreSQL (Singapore) |
+| **Data loaded** | 13 labelled demo stations (29 chargers, 1,958 readings), the 1,000-session dataset with its trained models, and all 285 Arduino bench readings |
+| **Browsing** | Every page and every read-only API is open to anyone |
+| **Editing** | Token mode: recording maintenance, setting service limits, importing data and updating action items need the admin token. Unlock it on **Company → Settings**; ask the project owner for the token |
+| **Health check** | [`/api/health`](https://evolt-ev.vercel.app/api/health) → `{"status":"ok","database":"ok",…}` |
+
+Each deploy runs the migrations and loads the data before building
+([`scripts/vercel-build.mjs`](scripts/vercel-build.mjs)). Every step is idempotent, so
+redeploying never duplicates records. How to set up your own → [docs/deployment.md](docs/deployment.md).
 
 ---
 
@@ -113,6 +134,8 @@ Deployment to Vercel and a managed PostgreSQL database → [docs/deployment.md](
 ---
 
 ## 🎯 A 2-minute tour for judges
+
+Works on the [live demo](https://evolt-ev.vercel.app) or a local copy.
 
 | # | Go to | What to notice |
 |---|---|---|
@@ -333,7 +356,16 @@ Full breakdown and design decisions → [docs/architecture.md](docs/architecture
 npm run lint && npm run typecheck && npm run test:unit
 ```
 
-What was and was not verified → [docs/testing.md](docs/testing.md).
+Last full run: 26 Oct 2026 — lint, type check and production build clean; 138 + 24 + 28 passed.
+
+**Checked on the live demo (26 Oct 2026):** the health endpoint, all 13 pages, and the
+recommendation, station, action-item, maintenance and bench-estimate APIs return real data;
+no runtime errors in the Vercel logs.
+**Not yet checked on the live demo:** saving changes with the admin token from a browser, and
+browser geolocation on a phone. Both are covered by the local integration and end-to-end tests.
+
+What was and was not verified → [docs/testing.md](docs/testing.md) ·
+[docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 </details>
 
@@ -346,8 +378,8 @@ What was and was not verified → [docs/testing.md](docs/testing.md).
 - **Demo stations.** They are labelled *Demo* everywhere and are not real sites. One click removes them.
 - **No live data.** There is no live availability, price or opening hours, so none is shown.
 - **Mapped stations.** Only stations with recorded coordinates appear on maps; the 19 dataset stations have none and are listed separately.
-- **No authentication.** The driver/company switch is a demo-mode view choice. Use token mode
-  before exposing EVOLT publicly.
+- **No user accounts.** The driver/company switch is a view choice, not a sign-in. Changes
+  are protected by a single admin token (token mode), which the live demo uses.
 - **Not a safety certification.** Health categories summarise recorded evidence.
 
 ---
@@ -362,7 +394,7 @@ What was and was not verified → [docs/testing.md](docs/testing.md).
 | [API reference](docs/api.md) | Every endpoint, with examples |
 | [Data dictionary](docs/data-dictionary.md) | Import formats, fields, units, database tables |
 | [Testing](docs/testing.md) | Test suites, last verified run, what is not verified |
-| [Deployment](docs/deployment.md) | Vercel + managed PostgreSQL |
+| [Deployment](docs/deployment.md) | Vercel + Neon PostgreSQL, automatic migrations and data loading, the live setup |
 | [Hardware bench](docs/hardware.md) | Optional Arduino low-voltage demo |
 | [Bench scaling](docs/scaling.md) | Arduino → real-world scaling formulas, assumptions, references and calibration needs |
 | [Change report](docs/CHANGE_REPORT.md) | Bugs fixed, features changed, verification |
