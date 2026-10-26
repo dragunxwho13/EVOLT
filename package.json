@@ -19,7 +19,9 @@
     "db:seed:reset": "tsx --conditions=react-server database/seed/seed.ts --reset",
     "check": "npm run lint && npm run typecheck && npm run test:unit && npm run build",
     "model:train": "tsx scripts/train-model.ts",
-    "db:seed:dataset": "tsx --conditions=react-server database/seed/dataset.ts"
+    "db:seed:dataset": "tsx --conditions=react-server database/seed/dataset.ts",
+    "model:degradation": "tsx scripts/train-degradation.ts",
+    "db:seed:bench": "tsx --conditions=react-server database/seed/bench.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

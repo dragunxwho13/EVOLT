@@ -100,3 +100,15 @@ describe("planSessions on the bundled dataset", () => {
     expect(p.sessions[0]!.values).not.toHaveProperty("power_loss");
   });
 });
+
+describe("the unified EVOLT–Arduino training file", () => {
+  const u = parseDatasetText(readFileSync("database/data/unified-evolt-arduino-training-dataset.csv", "utf8"), "csv");
+
+  it("imports as sessions even though its connector column is not a connector standard", () => {
+    expect(detectKind(u.headers)).toMatchObject({ kind: "sessions" });
+    const plan = planSessions(u.rows, u.headers, suggestMapping("sessions", u.headers), new Set(), NOW, 0);
+    expect(plan.counts).toMatchObject({ total: 1000, accepted: 1000, rejected: 0 });
+    expect(plan.chargers.every((c) => c.connectorType === "Unknown")).toBe(true);
+    expect(plan.findings.find((f) => /not a connector standard/.test(f.message))?.message).toMatch(/1000 session\(s\).*“Simulation”/);
+  });
+});

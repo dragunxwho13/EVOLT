@@ -46,6 +46,8 @@ curl "http://127.0.0.1:3000/api/recommendations?lat=13.0827&lng=80.2707&connecto
 | POST ✎ | `/api/analytics/recompute` | Re-run the health analysis |
 | GET · POST ✎ | `/api/chargers/{id}/maintenance` | Recorded work on a charger; POST `{ "performedAt", "action": "cleaned" \| "contacts_replaced" \| "connector_replaced" \| "adjusted" \| "other", "note"? }` then re-runs its analysis |
 | PUT ✎ | `/api/chargers/{id}/service-limit` | `{ "contactResistanceLimitMohm": number \| null }` — the forecast target (null = default) |
+| GET | `/api/bench` | Arduino bench: raw readings, per-connector analysis, insight cards, and the scaling table for `?scenario=ac-7\|ac-22\|dc-50\|dc-150` and `?connector=C1\|C2\|C3` |
+| GET | `/api/bench/estimate?voltage=&connector=&scenario=` | Saved bench calibration: bench volts → bench degradation %, plus the Method A real-world equivalent. Voltages above 5 V are refused (not bench readings) |
 | GET | `/api/maintenance` | Every recorded job with its verified outcome, and held rates by kind of work |
 
 ## Data and models

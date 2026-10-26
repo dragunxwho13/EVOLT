@@ -1,0 +1,315 @@
+{
+  "version": "2026.10-1",
+  "sources": {
+    "unified": {
+      "file": "database/data/unified-evolt-arduino-training-dataset.csv",
+      "sha256": "d84b3e824ed56ffdfada7174b45b9de634f73d962b645b10d9b746f28e88259a",
+      "rows": 1000
+    },
+    "bench": {
+      "file": "database/data/arduino-bench-readings.csv",
+      "sha256": "a819e9e22a528626d6c6e5ac5c2a194cb05f9cd29c85bb3133a92ae2af9629e9"
+    }
+  },
+  "study": {
+    "target": "Avg_Deg_pct",
+    "audit": {
+      "rows": 1000,
+      "columns": 36,
+      "missingCells": 0,
+      "duplicateRecordIds": 0,
+      "provenance": {
+        "derived_simulated": 1000
+      },
+      "connectorTypes": {
+        "Simulation": 1000
+      },
+      "lossExceedsConsumption": 35,
+      "checks": [
+        {
+          "id": "c1_voltage",
+          "finding": "C1_V equals the session's voltage_level.",
+          "maxAbsDifference": 4.993700315480964e-7,
+          "holds": true
+        },
+        {
+          "id": "c1_current",
+          "finding": "C1_mA equals 340.0 × the session's current_flow (A) — a fixed factor, not a measurement.",
+          "maxAbsDifference": 8.3064776390529e-8,
+          "holds": true
+        },
+        {
+          "id": "c1_degradation",
+          "finding": "C1_Deg_pct equals 100 × power_loss ÷ power_consumed, clipped to 0–100 %.",
+          "maxAbsDifference": 4.999910530045781e-7,
+          "holds": true
+        },
+        {
+          "id": "c2_copy",
+          "finding": "C2 is C1 with fixed factors (voltage × 0.998, current × 0.971, degradation × 0.98).",
+          "maxAbsDifference": 0.0000015024496152760136,
+          "holds": true
+        },
+        {
+          "id": "c3_copy",
+          "finding": "C3 is C1 with fixed factors (voltage × 1.002, current × 0.971, degradation × 1.02 before clipping).",
+          "maxAbsDifference": 8.41164493614599e-9,
+          "holds": true
+        },
+        {
+          "id": "avg_mean",
+          "finding": "Avg_Deg_pct is the mean of C1–C3 degradation.",
+          "maxAbsDifference": 3.333333467026023e-7,
+          "holds": true
+        }
+      ]
+    },
+    "folds": 5,
+    "featureSets": [
+      {
+        "featureSet": {
+          "id": "definition",
+          "label": "Loss and consumption (the target's own inputs)",
+          "question": "Is the target just a formula of two columns?",
+          "features": [
+            "loss_share_pct"
+          ]
+        },
+        "results": [
+          {
+            "split": "station_grouped_cv",
+            "baseline": {
+              "mae": 17.08210570000002,
+              "rmse": 25.54947731136835,
+              "r2": -0.09858216247146534,
+              "n": 1000
+            },
+            "ridge": {
+              "mae": 0.07127195041818953,
+              "rmse": 0.1061045132434694,
+              "r2": 0.9999810531848398,
+              "n": 1000
+            }
+          },
+          {
+            "split": "time_holdout",
+            "baseline": {
+              "mae": 16.379200154999996,
+              "rmse": 23.810816359079734,
+              "r2": -0.08031650505092114,
+              "n": 200
+            },
+            "ridge": {
+              "mae": 0.07205674763865853,
+              "rmse": 0.10157542930285184,
+              "r2": 0.999980340169316,
+              "n": 200
+            }
+          }
+        ],
+        "topWeights": [
+          {
+            "feature": "loss_share_pct",
+            "weight": 24.35162543591376
+          }
+        ]
+      },
+      {
+        "featureSet": {
+          "id": "no_loss",
+          "label": "All session measurements except power loss",
+          "question": "Can degradation be predicted without measuring the loss?",
+          "features": [
+            "voltage_level",
+            "current_flow",
+            "power_consumed",
+            "voltage_fluctuation",
+            "battery_capacity",
+            "charging_time",
+            "charging_power",
+            "charging_cost",
+            "predicted_power_demand",
+            "optimized_charging_power",
+            "grid_stability_score",
+            "num_chargers",
+            "inverse_current"
+          ]
+        },
+        "results": [
+          {
+            "split": "station_grouped_cv",
+            "baseline": {
+              "mae": 17.08210570000002,
+              "rmse": 25.54947731136835,
+              "r2": -0.09858216247146534,
+              "n": 1000
+            },
+            "ridge": {
+              "mae": 12.529974095740492,
+              "rmse": 16.403113182069724,
+              "r2": 0.5471847270934274,
+              "n": 1000
+            }
+          },
+          {
+            "split": "time_holdout",
+            "baseline": {
+              "mae": 16.379200154999996,
+              "rmse": 23.810816359079734,
+              "r2": -0.08031650505092114,
+              "n": 200
+            },
+            "ridge": {
+              "mae": 12.045192612702982,
+              "rmse": 15.380609073223903,
+              "r2": 0.5492357053247526,
+              "n": 200
+            }
+          }
+        ],
+        "topWeights": [
+          {
+            "feature": "inverse_current",
+            "weight": 14.88155940929443
+          },
+          {
+            "feature": "charging_cost",
+            "weight": 2.5164595858844168
+          },
+          {
+            "feature": "optimized_charging_power",
+            "weight": -2.3001564050606613
+          },
+          {
+            "feature": "charging_power",
+            "weight": -2.1987792652587443
+          }
+        ]
+      },
+      {
+        "featureSet": {
+          "id": "no_loss_no_current",
+          "label": "…and without current or power (which sit in the target's denominator)",
+          "question": "Does anything else carry information about degradation?",
+          "features": [
+            "voltage_level",
+            "voltage_fluctuation",
+            "battery_capacity",
+            "charging_time",
+            "charging_power",
+            "charging_cost",
+            "grid_stability_score",
+            "num_chargers"
+          ]
+        },
+        "results": [
+          {
+            "split": "station_grouped_cv",
+            "baseline": {
+              "mae": 17.08210570000002,
+              "rmse": 25.54947731136835,
+              "r2": -0.09858216247146534,
+              "n": 1000
+            },
+            "ridge": {
+              "mae": 18.288478001057815,
+              "rmse": 24.46071006185201,
+              "r2": -0.006947025376343063,
+              "n": 1000
+            }
+          },
+          {
+            "split": "time_holdout",
+            "baseline": {
+              "mae": 16.379200154999996,
+              "rmse": 23.810816359079734,
+              "r2": -0.08031650505092114,
+              "n": 200
+            },
+            "ridge": {
+              "mae": 18.25405223813848,
+              "rmse": 23.452508415618777,
+              "r2": -0.048047680506845936,
+              "n": 200
+            }
+          }
+        ],
+        "topWeights": [
+          {
+            "feature": "charging_time",
+            "weight": -3.0199690900204224
+          },
+          {
+            "feature": "charging_cost",
+            "weight": 2.8220072670080394
+          },
+          {
+            "feature": "num_chargers",
+            "weight": -1.8336212843891582
+          },
+          {
+            "feature": "charging_power",
+            "weight": -1.5500324360233677
+          }
+        ]
+      }
+    ],
+    "verdict": [
+      "The degradation columns are a formula, not a measurement: Avg_Deg_pct = clip(100 × power_loss ÷ power_consumed) (R² 1.000 on held-out stations).",
+      "Without power loss, ridge regression explains R² 0.55 — but only because current and power sit in the formula's denominator (largest weight: inverse_current). That is arithmetic, not wear.",
+      "Removing those too leaves R² -0.01: no other column carries information about degradation.",
+      "The dataset has no independently measured degradation label, so no degradation predictor is deployed from it."
+    ],
+    "deployable": false
+  },
+  "calibration": {
+    "kind": "bench_linear_calibration",
+    "intercept": 99.9333606545753,
+    "slope": -24.97103586476171,
+    "fittedOn": 219,
+    "inputRangeV": [
+      2.01,
+      3.62
+    ],
+    "inputScale": "experimental",
+    "timeBlocked": {
+      "mae": 0.06774489905050347,
+      "rmse": 0.08353785504849999,
+      "r2": 0.999817932753173,
+      "n": 219
+    },
+    "leaveOneConnectorOut": [
+      {
+        "connector": "C1",
+        "metrics": {
+          "mae": 0.06960994756810068,
+          "rmse": 0.08468503433487506,
+          "r2": 0.9998157476513118,
+          "n": 73
+        }
+      },
+      {
+        "connector": "C2",
+        "metrics": {
+          "mae": 0.06363311947647977,
+          "rmse": 0.08054282927742729,
+          "r2": 0.999823899083157,
+          "n": 73
+        }
+      },
+      {
+        "connector": "C3",
+        "metrics": {
+          "mae": 0.06145652110931319,
+          "rmse": 0.07870562887788002,
+          "r2": 0.9998420844875543,
+          "n": 73
+        }
+      }
+    ],
+    "formulaIntercept": 100,
+    "formulaSlope": -25,
+    "maxDeviationFromFormula": 0.15000000000000568,
+    "verdict": "Fitted degradation = 99.93 − 24.97 × V, against the log's own definition 100 − 25 × V. On held-out time blocks the error is 0.07 points (MAE). This recovers how the bench computes degradation; it converts a bench voltage into the bench's degradation index and says nothing about how fast a real connector wears."
+  }
+}

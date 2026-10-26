@@ -327,6 +327,34 @@ export const maintenanceEvents = pgTable(
   ],
 );
 
+/**
+ * Readings from the team's small-scale Arduino experimental circuit, stored exactly as logged
+ * (one row per connector and time step). They are NOT commercial-charger telemetry. Real-world
+ * estimates are calculated from these by `src/features/bench/scaling.ts` and never stored here.
+ */
+export const benchReadings = pgTable(
+  "bench_readings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: text("run_id").notNull(),
+    connector: text("connector").notNull(),
+    timeS: doublePrecision("time_s").notNull(),
+    voltageV: doublePrecision("voltage_v").notNull(),
+    currentMa: doublePrecision("current_ma").notNull(),
+    /** As logged by the bench; null where the log left it blank. Never filled in. */
+    degradationPct: doublePrecision("degradation_pct"),
+    /** 1-based data row in the source file. */
+    sourceRow: integer("source_row").notNull(),
+    sourceFile: text("source_file").notNull(),
+    sourceSha256: text("source_sha256").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("bench_run_connector_time_uq").on(t.runId, t.connector, t.timeS),
+    check("bench_connector_check", sql`${t.connector} IN ('C1', 'C2', 'C3')`),
+  ],
+);
+
 export const stationsRelations = relations(stations, ({ many }) => ({ chargers: many(chargers) }));
 export const chargersRelations = relations(chargers, ({ one, many }) => ({
   station: one(stations, { fields: [chargers.stationId], references: [stations.id] }),
@@ -355,3 +383,4 @@ export type SensorReading = typeof sensorReadings.$inferSelect;
 export type ChargingSession = typeof chargingSessions.$inferSelect;
 export type ModelRun = typeof modelRuns.$inferSelect;
 export type MaintenanceEvent = typeof maintenanceEvents.$inferSelect;
+export type BenchReading = typeof benchReadings.$inferSelect;

@@ -360,6 +360,7 @@ export function planSessions(
 ): SessionPlan {
   const issues: ImportRowIssue[] = [];
   const counts: ImportCounts = { total: rows.length, accepted: 0, rejected: 0, duplicate: 0, skipped: 0 };
+  const unrecognisedConnectors = new Map<string, number>();
   const futureLimit = now.getTime() + ANALYSIS_PARAMS.futureToleranceMinutes * 60_000;
   const mapped = new Set(Object.values(mapping).filter((v): v is string => Boolean(v)));
   const labelFields = ["power_loss_label", "voltage_stability_label"].filter((f) => mapping[f]);
@@ -408,12 +409,14 @@ export function planSessions(
     if (ts.value.getTime() > futureLimit) return reject("observed_at", "Session time is in the future.");
 
     const mode = cleanText(get(raw, mapping, "charging_mode"), 40);
+    // Connector type is optional for sessions: an unrecognised value (e.g. "Simulation") is
+    // recorded as "Not recorded" and reported, rather than discarding the whole session.
     let connectorType: ConnectorType = "Unknown";
     const connRaw = get(raw, mapping, "connector_type");
     if (connRaw.trim()) {
       const c = normalizeConnector(connRaw);
-      if (!c.ok) return reject("connector_type", c.error);
-      connectorType = c.value;
+      if (c.ok) connectorType = c.value;
+      else unrecognisedConnectors.set(connRaw.trim(), (unrecognisedConnectors.get(connRaw.trim()) ?? 0) + 1);
     }
     const chargerRaw = get(raw, mapping, "charger_code").trim();
     const chargerCode = chargerRaw ? chargerRaw : mode ? `${stationCode}-${slug(mode)}` : `${stationCode}-C1`;
@@ -486,6 +489,14 @@ export function planSessions(
   const multiMode = [...modesByStation.values()].filter((s) => s.size > 1).length;
   if (multiMode > 0) findings.push({ level: "info", message: `${multiMode} stations have sessions with several charging types; each station + charging type becomes its own charger.` });
   if (!mapping.connector_type) findings.push({ level: "info", message: "No connector type column: chargers are recorded with connector “Not recorded” and excluded when you filter alternatives by connector." });
+  if (unrecognisedConnectors.size) {
+    const total = [...unrecognisedConnectors.values()].reduce((a, b) => a + b, 0);
+    const values = [...unrecognisedConnectors.keys()].slice(0, 3).map((v) => `“${v}”`).join(", ");
+    findings.push({
+      level: "warning",
+      message: `${total} session(s) have a connector type that is not a connector standard (${values}). They are kept, with connector “Not recorded”, and excluded when you filter alternatives by connector.`,
+    });
+  }
   const lossCol = mapping.power_loss;
   const consumedCol = headers.find((h) => normalizeHeader(h) === "power_consumed");
   if (lossCol && consumedCol) {

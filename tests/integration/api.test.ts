@@ -11,6 +11,11 @@ import { GET as chargerGET } from "@/app/api/chargers/[id]/route";
 import { GET as maintenanceGET, POST as maintenancePOST } from "@/app/api/chargers/[id]/maintenance/route";
 import { PUT as limitPUT } from "@/app/api/chargers/[id]/service-limit/route";
 import { GET as fleetRepairsGET } from "@/app/api/maintenance/route";
+import { GET as benchGET } from "@/app/api/bench/route";
+import { GET as benchEstimateGET } from "@/app/api/bench/estimate/route";
+import { BENCH_RUN } from "@/config/scaling";
+import { parseBenchCsv } from "@/features/bench/parse";
+import { loadBench } from "../../database/seed/bench";
 import { GET as datasetsGET, POST as datasetsPOST } from "@/app/api/datasets/route";
 import { POST as previewPOST } from "@/app/api/datasets/preview/route";
 import { DELETE as syntheticDELETE } from "@/app/api/datasets/synthetic/route";
@@ -25,7 +30,7 @@ import { POST as sensorPOST } from "@/app/api/sensor-readings/route";
 import { GET as stationsGET } from "@/app/api/stations/route";
 import { GET as stationGET } from "@/app/api/stations/[id]/route";
 import { getDb } from "@/lib/db/client";
-import { alerts, chargers, chargingSessions, healthObservations, modelRuns, stations } from "@/lib/db/schema";
+import { alerts, benchReadings, chargers, chargingSessions, healthObservations, modelRuns, stations } from "@/lib/db/schema";
 import { toErrorResponse } from "@/lib/errors";
 import { ADMIN, body, ctx, degradingObservationsCsv, uploadRequest } from "./helpers";
 
@@ -448,6 +453,43 @@ describe("API and persistence", () => {
     expect(fleet.rows.find((r) => r.chargerCode === "EX-01-B")!.outcome).toBe("held");
     const [row] = await getDb().select().from(chargers).where(eq(chargers.id, id));
     expect(row!.healthSummary!.metrics.find((m) => m.metric === "contact_resistance")!.temperatureCorrection?.applied).toBe(false);
+  });
+
+  it("stores the Arduino bench log unchanged and serves the scaling, connectors and calibration from it", async () => {
+    expect((await benchGET(get("/api/bench"))).status).toBe(404);
+    const url = process.env.TEST_DATABASE_URL!;
+    expect(await loadBench(url)).toMatch(/loaded: 95 time steps × 3 connectors = 285 readings/);
+    expect(await loadBench(url)).toMatch(/already stored/);
+
+    // Raw readings in the database are exactly the file's values, blanks included.
+    const stored = await getDb().select().from(benchReadings);
+    const file = parseBenchCsv(readFileSync(BENCH_RUN.file, "utf8")).records;
+    expect(stored).toHaveLength(file.length);
+    for (const r of file) {
+      const s = stored.find((x) => x.connector === r.connector && x.timeS === r.timeS)!;
+      expect([s.voltageV, s.currentMa, s.degradationPct, s.sourceRow]).toEqual([r.voltageV, r.currentMa, r.degradationPct, r.sourceRow]);
+    }
+
+    const res = await benchGET(get("/api/bench?scenario=ac-22&connector=C2"));
+    expect(res.status).toBe(200);
+    const d = (await body<Data<{ analysis: { connectors: { connector: string }[] }; scaling: { scenario: { id: string }; connector: string; rows: { key: string }[] }; calibrationConsistent: boolean; insights: unknown[] }>>(res)).data;
+    expect(d.analysis.connectors.map((c) => c.connector)).toEqual(["C1", "C2", "C3"]);
+    expect(d.scaling).toMatchObject({ scenario: { id: "ac-22" }, connector: "C2" });
+    expect(d.scaling.rows.map((r) => r.key)).toContain("extra_resistance");
+    expect(d.calibrationConsistent).toBe(true);
+    expect(d.insights.length).toBeGreaterThan(3);
+    expect((await benchGET(get("/api/bench?scenario=mars"))).status).toBe(400);
+    expect((await benchGET(get("/api/bench?connector=C9"))).status).toBe(400);
+
+    const est = (await body<Data<{ estimate: { degradationPct: number }; realWorld: { realHeatW: number } | null }>>(await benchEstimateGET(get("/api/bench/estimate?voltage=2.2&scenario=dc-50")))).data;
+    expect(est.estimate.degradationPct).toBeCloseTo(45, 0);
+    expect(est.realWorld!.realHeatW).toBeGreaterThan(1000);
+    const healthy = (await body<Data<{ realWorld: unknown }>>(await benchEstimateGET(get("/api/bench/estimate?voltage=4.3")))).data;
+    expect(healthy.realWorld).toBeNull();
+    const refused = await benchEstimateGET(get("/api/bench/estimate?voltage=230"));
+    expect(refused.status).toBe(400);
+    expect(await body(refused)).toMatchObject({ error: { message: expect.stringMatching(/not a bench reading/) } });
+    expect((await benchEstimateGET(get("/api/bench/estimate?voltage=abc"))).status).toBe(400);
   });
 
   it("maps an unreachable database to a 503 without leaking details", async () => {
