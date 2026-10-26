@@ -9,9 +9,17 @@ export type Database = NodePgDatabase<typeof schema>;
 type GlobalWithDb = typeof globalThis & { __evoltPool?: Pool; __evoltDb?: Database };
 const g = globalThis as GlobalWithDb;
 
+/**
+ * pg treats sslmode=require as verify-full and warns about the coming change; say so explicitly
+ * so hosted URLs (Neon adds sslmode=require) keep today's full verification without the warning.
+ */
+export function normalizeSslMode(connectionString: string): string {
+  return connectionString.replace(/([?&])sslmode=(prefer|require|verify-ca)(?=&|$)/, "$1sslmode=verify-full");
+}
+
 export function createDatabase(connectionString: string, max = 5): { db: Database; pool: Pool } {
   const pool = new Pool({
-    connectionString,
+    connectionString: normalizeSslMode(connectionString),
     max,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 8_000,
