@@ -21,7 +21,8 @@
     "model:train": "tsx scripts/train-model.ts",
     "db:seed:dataset": "tsx --conditions=react-server database/seed/dataset.ts",
     "model:degradation": "tsx scripts/train-degradation.ts",
-    "db:seed:bench": "tsx --conditions=react-server database/seed/bench.ts"
+    "db:seed:bench": "tsx --conditions=react-server database/seed/bench.ts",
+    "vercel-build": "node scripts/vercel-build.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

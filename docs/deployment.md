@@ -20,7 +20,13 @@ You can also add Neon from the Vercel Marketplace, which sets `DATABASE_URL` for
 Keep separate databases (or Neon branches) for production and preview deployments, so
 preview tests never touch production data.
 
-## 2. Apply migrations
+## 2. Apply migrations (automatic on Vercel)
+
+Set the project's build command to `npm run vercel-build` (`scripts/vercel-build.mjs`). When a
+database is connected it applies the migrations and loads the demo stations, the Arduino bench
+log and the session dataset before `next build`; every step is idempotent, so redeploys never
+duplicate data. It uses `DATABASE_URL_UNPOOLED` (set by Neon) for these steps when present.
+Without a database the build still succeeds. To do it by hand instead:
 
 Migrations are plain, forward-only SQL in `database/migrations`. Run them from your machine
 against each database before (or right after) its first deployment, and again whenever a new
