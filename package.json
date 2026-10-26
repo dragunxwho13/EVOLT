@@ -1,5 +1,14 @@
 {
   "name": "evolt",
+  "description": "EV charging intelligence: drivers find reliable chargers; operators get evidence-backed connector-health action items.",
+  "homepage": "https://evolt-ev.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dragunxwho13/EVOLT.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dragunxwho13/EVOLT/issues"
+  },
   "version": "0.1.0",
   "private": true,
   "scripts": {

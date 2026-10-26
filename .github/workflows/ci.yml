@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, types, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: evolt
+          POSTGRES_PASSWORD: evolt
+          POSTGRES_DB: evolt_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U evolt"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Two disposable databases: the integration suite truncates every table and the
+      # end-to-end setup wipes and reseeds its own. Neither is the app's DATABASE_URL.
+      TEST_DATABASE_URL: postgresql://evolt:evolt@localhost:5432/evolt_test
+      E2E_DATABASE_URL: postgresql://evolt:evolt@localhost:5432/evolt_e2e
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Create test databases
+        env:
+          PGPASSWORD: evolt
+        run: |
+          psql -h localhost -U evolt -d evolt_ci -c "create database evolt_test"
+          psql -h localhost -U evolt -d evolt_ci -c "create database evolt_e2e"
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:integration
+      - run: npm run build
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
