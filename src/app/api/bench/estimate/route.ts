@@ -13,7 +13,7 @@ const query = z
     connector: z.enum(["C1", "C2", "C3"]).default("C1"),
     scenario: z.enum(SCENARIOS.map((s) => s.id) as [string, ...string[]]).default(DEFAULT_SCENARIO),
   })
-  .strict();
+  .strip();
 
 /**
  * Inference with the saved bench calibration: a bench (experimental-scale) voltage → the

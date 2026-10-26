@@ -31,6 +31,18 @@ Run on 26 Oct 2026, Linux sandbox, PostgreSQL 16.15, Node 22.23, Chromium (Playw
 | → backend | `/api/bench` and `/api/bench/estimate`, including 400s for bad scenario, connector and voltage |
 | → frontend | bench page: three connector columns, scaling table, scenario change through the URL, estimator result and refusal; model page study; no page shows "synthetic" or "simulated" |
 
+## Live deployment (https://evolt-ev.vercel.app, 26 Oct 2026)
+
+| Check | Result |
+|---|---|
+| Build log | migrations applied; demo 13 stations / 29 chargers / 1,958 observations; 285 bench readings; dataset loaded; compiled |
+| `/api/health` | `status: ok`, `database: ok`, `writesEnabled: true`, `editMode: token` |
+| Pages | `/`, `/driver` and all 12 company pages returned 200 with data, no error screens |
+| APIs | overview, stations, recommendations, insights, maintenance, bench estimate (2.2 V → 45.0 %) returned correct data |
+| Vercel runtime errors | none since the final deploy |
+| Fixed during this check | unknown query parameters (e.g. share tokens) caused 400s on GET endpoints; `pg` SSL-mode warning |
+| Not checked live | saving with the admin token from a browser; phone geolocation |
+
 ## Not verified
 
 - **Real-world accuracy of any estimate.** The scaled values follow from documented formulas;

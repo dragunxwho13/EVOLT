@@ -8,7 +8,7 @@ const query = z
     scenario: z.enum(SCENARIOS.map((s) => s.id) as [string, ...string[]]).optional(),
     connector: z.enum(["C1", "C2", "C3"]).optional(),
   })
-  .strict();
+  .strip();
 
 /**
  * Arduino experimental circuit: raw readings (as stored), per-connector analysis, the

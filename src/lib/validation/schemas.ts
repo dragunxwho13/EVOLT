@@ -32,7 +32,7 @@ export const stationQuerySchema = z
     limit: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(500).default(100)),
     offset: z.preprocess(blankToUndefined, z.coerce.number().int().min(0).default(0)),
   })
-  .strict()
+  .strip() // query strings: ignore unknown params (utm_*, share tokens)
   .refine((v) => (v.lat === undefined) === (v.lng === undefined), {
     message: "Provide both lat and lng, or neither.",
     path: ["lat"],
@@ -80,7 +80,7 @@ export const recommendationQuerySchema = z
     availableOnly: z.preprocess(blankToUndefined, z.enum(["true", "false"]).default("false")).transform((v) => v === "true"),
     limit: z.preprocess(blankToUndefined, z.coerce.number().int().min(1).max(50).default(10)),
   })
-  .strict()
+  .strip() // query strings: ignore unknown params (utm_*, share tokens)
   .refine((v) => (v.lat === undefined) === (v.lng === undefined), {
     message: "Provide both lat and lng, or neither.",
     path: ["lat"],
@@ -189,7 +189,7 @@ export const performanceQuerySchema = z
     area: opt(z.string().trim().min(1).max(60)),
     format: opt(z.enum(["json", "csv"])),
   })
-  .strict();
+  .strip(); // query strings: ignore unknown params (utm_*, share tokens)
 
 export const predictionRequestSchema = z
   .object({

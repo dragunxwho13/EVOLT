@@ -3,7 +3,23 @@
 [← Back to README](../README.md)
 
 EVOLT is a standard Next.js 16 application. It needs one PostgreSQL database and two
-secrets. The build never touches the database, so builds succeed without credentials.
+secrets. With the `vercel-build` command (step 2) a deploy prepares the database itself; without
+a database the build still succeeds and the app reports `not_configured`.
+
+## Current live deployment
+
+| Setting | Value |
+|---|---|
+| URL | https://evolt-ev.vercel.app (also `evolt-nine.vercel.app`) |
+| Vercel project | `evolt` — framework Next.js, Node 22.x, functions in `sin1` (Singapore) |
+| Build command | `npm run vercel-build` |
+| Database | Neon PostgreSQL (Free plan, Singapore), added from the Vercel Marketplace; it sets `DATABASE_URL`, `DATABASE_URL_UNPOOLED` and related variables |
+| Edit mode | `EVOLT_EDIT_MODE=token`, `EVOLT_ADMIN_TOKEN` stored as a sensitive variable |
+| Deployment protection | Vercel authentication on preview deployments only; production is public |
+
+The project is not linked to a Git repository yet, so pushes do not deploy on their own;
+deployments are created from a branch and commit. To deploy on every push, link the repository
+under **Project → Settings → Git**.
 
 ## 1. Create the database
 
@@ -20,22 +36,30 @@ You can also add Neon from the Vercel Marketplace, which sets `DATABASE_URL` for
 Keep separate databases (or Neon branches) for production and preview deployments, so
 preview tests never touch production data.
 
-## 2. Apply migrations
+## 2. Apply migrations (automatic on Vercel)
 
-Migrations are plain, forward-only SQL in `database/migrations`. Run them from your machine
-against each database before (or right after) its first deployment, and again whenever a new
-migration file is added:
+Set the project's build command to `npm run vercel-build` (`scripts/vercel-build.mjs`). When a
+database is connected it applies the migrations and loads the demo stations, the Arduino bench
+log and the session dataset before `next build`; every step is idempotent, so redeploys never
+duplicate data. It uses `DATABASE_URL_UNPOOLED` (set by Neon) for these steps when present.
+Without a database the build still succeeds.
+
+To do it by hand instead (with the plain `npm run build` command): migrations are plain,
+forward-only SQL in `database/migrations`. Run them from your machine against each database
+before (or right after) its first deployment, and again whenever a new migration file is added:
 
 ```bash
 DATABASE_URL="postgresql://…" npm run db:migrate
 ```
 
-They are deliberately **not** run during `next build`: a build should never alter a database.
+`next build` itself never alters a database; only the `vercel-build` wrapper does, before it.
 
-## 3. (Optional) Load the demo stations and the supplied dataset
+## 3. Load the demo stations and the supplied dataset (by hand only)
+
+`vercel-build` already does this. Without it:
 
 ```bash
-DATABASE_URL="postgresql://…" npm run db:seed           # 12 labelled demo stations
+DATABASE_URL="postgresql://…" npm run db:seed           # 13 labelled demo stations
 DATABASE_URL="postgresql://…" npm run db:seed:dataset   # the session dataset + model training
 ```
 
@@ -60,12 +84,13 @@ git push -u origin main
 ## 5. Create the Vercel project
 
 1. Vercel dashboard → **Add New… → Project** → import the GitHub repository.
-2. Framework preset: **Next.js** (detected). Build command `npm run build`, output default.
+2. Framework preset: **Next.js** (detected). Build command `npm run vercel-build`, output default.
 3. **Environment variables** (Settings → Environment Variables):
 
    | Name | Production | Preview | Notes |
    |---|---|---|---|
-   | `DATABASE_URL` | prod DB URL | preview DB URL | required |
+   | `DATABASE_URL` | prod DB URL | preview DB URL | required (set for you by the Neon integration) |
+   | `DATABASE_URL_UNPOOLED` | direct DB URL | direct DB URL | optional; used for migrations at build time |
    | `EVOLT_EDIT_MODE` | `token` | `token` | **set `token` on any public deployment** (unset also means token unless `EVOLT_LOCAL_DB=true`) |
    | `EVOLT_ADMIN_TOKEN` | long random string | different random string | required in token mode; ≥ 16 chars |
    | `EVOLT_MAX_UPLOAD_BYTES` | optional | optional | default 2 MiB, max 4 MiB |
@@ -93,5 +118,10 @@ Functions) to keep query latency low.
 - Re-running the analysis for all chargers (`POST /api/analytics/recompute`) is done charger by
   charger in separate transactions. For very large fleets, run it from a scheduled job rather
   than the UI, and raise the function's max duration if needed.
+- Hosted connection strings usually carry `sslmode=require`; EVOLT passes it to `pg` as
+  `verify-full` (what `pg` already does), which keeps full certificate checks and avoids its
+  deprecation warning.
+- GET endpoints ignore query parameters they do not know (tracking or share tokens), so shared
+  links work; request bodies are still validated strictly.
 - The admin session cookie is httpOnly, `SameSite=Strict`, `Secure` in production and expires
   after 8 hours. Rotating `EVOLT_ADMIN_TOKEN` invalidates all sessions.
