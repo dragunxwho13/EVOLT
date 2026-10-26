@@ -233,7 +233,8 @@ describe("API and persistence", () => {
     expect(avail.preferences.join(" ")).toMatch(/Price/);
     expect((await recommendationsGET(get("/api/recommendations"))).status).toBe(400);
     // Unknown query parameters are rejected rather than silently ignored.
-    expect((await recommendationsGET(get(`/api/recommendations?fromCharger=${ch!.id}&latitude=1`))).status).toBe(400);
+    // Unknown query parameters (tracking or share tokens) are ignored, not rejected.
+    expect((await recommendationsGET(get(`/api/recommendations?fromCharger=${ch!.id}&utm_source=x`))).status).toBe(200);
   });
 
   it("stores optional sensor readings without affecting health", async () => {
@@ -343,7 +344,7 @@ describe("API and persistence", () => {
     const lines = (await csv.text()).trim().split("\r\n");
     expect(lines[0]).toMatch(/^station,sessions,/);
     expect(lines).toHaveLength(20);
-    expect((await performanceGET(get("/api/company/performance?unknown=1"))).status).toBe(400);
+    expect((await performanceGET(get("/api/company/performance?unknown=1"))).status).toBe(200);
   });
 
   it("lists evidence-backed action items and persists workflow decisions", async () => {
@@ -480,6 +481,7 @@ describe("API and persistence", () => {
     expect(d.insights.length).toBeGreaterThan(3);
     expect((await benchGET(get("/api/bench?scenario=mars"))).status).toBe(400);
     expect((await benchGET(get("/api/bench?connector=C9"))).status).toBe(400);
+    expect((await benchGET(get("/api/bench?_vercel_share=abc"))).status).toBe(200);
 
     const est = (await body<Data<{ estimate: { degradationPct: number }; realWorld: { realHeatW: number } | null }>>(await benchEstimateGET(get("/api/bench/estimate?voltage=2.2&scenario=dc-50")))).data;
     expect(est.estimate.degradationPct).toBeCloseTo(45, 0);
