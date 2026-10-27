@@ -5,24 +5,32 @@
  *  - BENCH_RUN: where the experimental-circuit log is and how its columns are defined.
  *  - SCENARIOS / ASSUMPTIONS: chosen operating points and modelling assumptions (editable).
  *  - REFERENCES: values published by an identified third party, with the page they came from.
- * Circuit values (healthy voltage, load resistance, degraded voltage) are NOT hard-coded: they
- * are measured from the stored bench readings by src/features/bench/analysis.ts.
+ * Circuit values (each connector's load resistance and healthy reference voltage) are NOT
+ * hard-coded: they are measured from the stored bench readings by src/features/bench/analysis.ts.
  */
 
-export const SCALING_VERSION = "2026.10-1";
+export const SCALING_VERSION = "2026.10-2";
 
 export const BENCH_RUN = {
-  id: "bench-run-1",
-  file: "database/data/arduino-bench-readings.csv",
-  rawFile: "database/data/raw/degradation_data.xlsx",
-  description: "Three connectors (C1–C3) in series with a fixed load, one reading every 0.5 s for 47.5 s.",
-  /** The log's own definition: degradation % = 100 × (1 − V / this reference), clipped at 0. */
-  degradationReferenceV: 4.0,
-  /** Arduino Uno: 10-bit ADC on a 5 V reference (hardware/evolt_bench sketch). */
+  id: "bench-run-2",
+  file: "database/data/arduino-bench-run-2.csv",
+  rawFile: "database/data/raw/arduino-bench-run-2.xlsx",
+  description:
+    "Three connectors (C1–C3), each with its own fixed load, logged every 0.5 s from 1.2 s to 64.2 s. Each connector is swept repeatedly from near-healthy to an open circuit and back.",
+  /**
+   * The log's definition, per connector: degradation % = 100 × (1 − V ÷ V_ref), where V_ref is that
+   * connector's healthy (0 %) level. V_ref is not hard-coded: it is measured from the readings.
+   */
+  degradationDefinition: "100 × (1 − V ÷ V_ref), V_ref = the connector's own healthy level",
+  /** Arduino Uno: 10-bit ADC on a 5 V reference. */
   adcReferenceV: 5.0,
   adcBits: 10,
-  /** A logged degradation at or above this counts as the degraded state. */
-  degradedFromPct: 30,
+  /** Bands of the logged degradation index, used to describe the readings. */
+  healthyBelowPct: 10,
+  severeFromPct: 40,
+  /** Degradation levels offered for the bench → charger scaling (the bench index, not charger wear). */
+  scalingLevelsPct: [10, 25, 50, 75] as const,
+  defaultScalingLevelPct: 50,
 } as const;
 
 export type ChargerKind = "AC" | "DC";

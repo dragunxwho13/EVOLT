@@ -113,21 +113,38 @@ formula's denominator — arithmetic, not wear. Without those, nothing beats the
 degradation predictor is deployed from this dataset**; doing so would present a formula as a
 forecast.
 
-### What is deployed: the bench calibration
+### What is deployed: the bench model
 
-The only measured degradation signal is the bench voltage. Least squares on the 219
-logged readings at or below 4.0 V gives
+The only measured degradation signal is the bench voltage (Arduino run 2: three connectors, each
+swept repeatedly between near-healthy and open circuit). The connectors have different loads
+(493 / 350 / 388 Ω) and different healthy levels V_ref (3.455 / 3.067 / 3.193 V), so a voltage
+only means something relative to its own connector. Least squares on the 314 conducting readings
+below 100 % gives
 
 ```
-degradation % = 99.93 − 24.97 × V     (log's definition: 100 − 25 × V)
+degradation % = 100.11 − 100.23 × (V ÷ V_ref)      (log's definition: 100 − 100 × V ÷ V_ref)
 ```
 
-Held-out error: 0.07 points MAE on held-out time blocks (fit on one half of the run,
-test on the other); leaving one connector out: C1 0.07 · C2 0.06 · C3 0.06 points. It is saved in
-`models/degradation-report.json`, re-fitted from the database on every bench-page load (the page
-says whether they match), and served by `GET /api/bench/estimate?voltage=…`.
+with V_ref measured per connector. Three models were compared on data they never saw:
+
+| Model | Each sweep held out in turn (MAE) | Each connector held out (MAE) |
+|---|---|---|
+| One voltage line for all connectors | 2.28 points | C1 4.52 · C2 3.53 · C3 1.05 |
+| A separate voltage line per connector | 0.09 points | — (needs that connector's full history) |
+| **Relative voltage V ÷ V_ref (deployed)** | **0.09 points** | **C1 0.09 · C2 0.12 · C3 0.09** |
+
+For a held-out connector the relative model gets only that connector's **first sweep**
+(commissioning) to set its V_ref — 3.455 / 3.064 / 3.195 V, within 3 mV of the full-run values —
+and is tested on its remaining sweeps. That is the improvement over a single voltage line: one
+model that serves every connector, and a new one after a single commissioning sweep. Open-circuit
+readings (0 V = 100 % by definition) are excluded from fitting and testing.
+
+The model is saved in `models/degradation-report.json`, re-fitted from the database on every
+bench-page load (the page says whether they match), and served by
+`GET /api/bench/estimate?voltage=…&connector=C1|C2|C3` or `…&referenceV=…` for a new connector.
 
 **Input scale:** experimental-circuit volts only (≤ 5 V). Real-charger voltages are refused with
-an error — the calibration describes the bench's index, not real connector wear, and scaling
-electrical readings does not scale degradation. The real-world consequence of a bench state is
-shown separately by the scaling (see [scaling.md](scaling.md)).
+an error — the model describes the bench's index, not real connector wear, and scaling
+electrical readings does not scale degradation. The sweeps are a controlled stress pattern, so
+they give no rate of wear over time. The real-world consequence of a bench state is shown
+separately by the scaling (see [scaling.md](scaling.md)).

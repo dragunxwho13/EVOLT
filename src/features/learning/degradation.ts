@@ -5,14 +5,16 @@
  *    relate to the session columns. A leakage-aware regression study then compares a baseline
  *    with ridge regression on three feature sets, under station-grouped cross-validation
  *    (device-aware) and a time-ordered hold-out (time-aware), with MAE / RMSE / R².
- * 2. The bench calibration: the only measured degradation signal, voltage → degradation %
- *    on the experimental circuit, fitted by least squares and checked on held-out time blocks
- *    and held-out connectors. It accepts experimental-scale (bench) volts only.
+ * 2. The bench calibration: the only measured degradation signal. Relative voltage (V ÷ the
+ *    connector's healthy reference) → degradation %, fitted by least squares and checked on
+ *    held-out sweeps and held-out connectors against two simpler models. It accepts
+ *    experimental-scale (bench) volts only.
  *
  * Pure and deterministic; no randomness is used, so every number is reproducible.
  */
 import { BENCH_RUN } from "@/config/scaling";
-import type { BenchRecord } from "@/features/bench/parse";
+import { classifyReadings, referenceVoltage, type ClassifiedReading } from "@/features/bench/analysis";
+import { BENCH_CONNECTORS, type BenchConnector, type BenchRecord } from "@/features/bench/parse";
 
 /* ───────────── shared numerics ───────────── */
 
@@ -339,21 +341,39 @@ export function studyUnifiedDataset(rows: readonly UnifiedRow[], headers: readon
 
 /* ───────────── 2. bench calibration ───────────── */
 
+/**
+ * The deployed bench model: degradation % = intercept + slope × (V ÷ V_ref), where V_ref is the
+ * connector's own healthy level. Using the RELATIVE voltage is what lets one model serve three
+ * connectors with different loads and references — and a new connector after one commissioning
+ * sweep. Evaluated on whole sweeps and whole connectors the model never saw.
+ */
 export interface BenchCalibration {
-  kind: "bench_linear_calibration";
-  /** degradation % = intercept + slope × V, clipped to 0–100. */
+  kind: "bench_relative_voltage";
   intercept: number;
   slope: number;
+  /** Healthy reference voltage per connector (V), measured from the log. */
+  references: Record<BenchConnector, number>;
   fittedOn: number;
-  inputRangeV: [number, number];
+  /** Range of V ÷ V_ref the model was fitted on. */
+  inputRatioRange: [number, number];
   inputScale: "experimental";
-  /** Evaluation on data not used for fitting. */
-  timeBlocked: RegressionMetrics;
-  leaveOneConnectorOut: { connector: string; metrics: RegressionMetrics }[];
-  /** The log's documented definition, for comparison: 100 × (1 − V / 4.0 V). */
-  formulaIntercept: number;
-  formulaSlope: number;
-  maxDeviationFromFormula: number;
+  evaluation: {
+    /** Each sweep of each connector held out in turn; metrics pooled over all held-out readings. */
+    leaveOneSweepOut: { pooledVoltage: RegressionMetrics; perConnectorVoltage: RegressionMetrics; relativeVoltage: RegressionMetrics };
+    /**
+     * Each connector held out entirely. The relative model gets only the held-out connector's
+     * first sweep (commissioning) to set its V_ref, and is tested on its remaining sweeps.
+     */
+    leaveOneConnectorOut: {
+      connector: BenchConnector;
+      commissioningReferenceV: number;
+      tested: number;
+      pooledVoltage: RegressionMetrics;
+      relativeVoltage: RegressionMetrics;
+    }[];
+  };
+  /** Largest |logged − 100 × (1 − V ÷ V_ref)| over the calibration readings (points). */
+  maxDeviationFromDefinition: number;
   verdict: string;
 }
 
@@ -373,75 +393,136 @@ function ols(x: readonly number[], y: readonly number[]): { a: number; b: number
 
 const clip = (v: number) => Math.min(100, Math.max(0, v));
 
-/** Rows usable for calibration: live, degradation logged, and below the reference (not clipped to 0). */
-export function calibrationRows(records: readonly BenchRecord[]): BenchRecord[] {
-  return records.filter((r) => r.voltageV > 0 && r.degradationPct !== null && r.voltageV <= BENCH_RUN.degradationReferenceV);
+/** Rows usable for calibration: conducting (V > 0), degradation logged, below 100 %. */
+export function calibrationRows(records: readonly BenchRecord[]): ClassifiedReading[] {
+  return classifyReadings(records).filter((r) => r.voltageV > 0 && r.degradationPct !== null && r.degradationPct < 100);
+}
+
+function referencesOf(rows: readonly BenchRecord[]): Partial<Record<BenchConnector, number>> {
+  const out: Partial<Record<BenchConnector, number>> = {};
+  for (const c of BENCH_CONNECTORS) {
+    const mine = rows.filter((r) => r.connector === c);
+    if (mine.length) out[c] = referenceVoltage(mine);
+  }
+  return out;
+}
+
+function fitRelative(rows: readonly BenchRecord[], refs: Partial<Record<BenchConnector, number>>) {
+  return ols(rows.map((r) => r.voltageV / refs[r.connector]!), rows.map((r) => r.degradationPct!));
 }
 
 export function fitBenchCalibration(records: readonly BenchRecord[]): BenchCalibration {
   const rows = calibrationRows(records);
-  const fit = ols(rows.map((r) => r.voltageV), rows.map((r) => r.degradationPct!));
-  // Time-blocked: fit on the first half of the run, test on the second, then the reverse.
-  const times = [...new Set(rows.map((r) => r.timeS))].sort((a, b) => a - b);
-  const mid = times[Math.floor(times.length / 2)]!;
-  const yT: number[] = [];
-  const pT: number[] = [];
-  for (const [train, test] of [
-    [rows.filter((r) => r.timeS < mid), rows.filter((r) => r.timeS >= mid)],
-    [rows.filter((r) => r.timeS >= mid), rows.filter((r) => r.timeS < mid)],
-  ] as const) {
-    const f = ols(train.map((r) => r.voltageV), train.map((r) => r.degradationPct!));
+  const refs = referencesOf(rows) as Record<BenchConnector, number>;
+  const fit = fitRelative(rows, refs);
+  const ratios = rows.map((r) => r.voltageV / refs[r.connector]);
+
+  // Leave one sweep out.
+  const groups = [...new Set(rows.map((r) => `${r.connector}#${r.sweep}`))];
+  const acc = { pooledVoltage: { y: [] as number[], p: [] as number[] }, perConnectorVoltage: { y: [] as number[], p: [] as number[] }, relativeVoltage: { y: [] as number[], p: [] as number[] } };
+  for (const g of groups) {
+    const test = rows.filter((r) => `${r.connector}#${r.sweep}` === g);
+    const train = rows.filter((r) => `${r.connector}#${r.sweep}` !== g);
+    const c = test[0]!.connector;
+    const pooled = ols(train.map((r) => r.voltageV), train.map((r) => r.degradationPct!));
+    const own = train.filter((r) => r.connector === c);
+    const per = ols(own.map((r) => r.voltageV), own.map((r) => r.degradationPct!));
+    const trainRefs = referencesOf(train);
+    const rel = fitRelative(train, trainRefs);
     for (const r of test) {
-      yT.push(r.degradationPct!);
-      pT.push(clip(f.a + f.b * r.voltageV));
+      for (const k of ["pooledVoltage", "perConnectorVoltage", "relativeVoltage"] as const) acc[k].y.push(r.degradationPct!);
+      acc.pooledVoltage.p.push(clip(pooled.a + pooled.b * r.voltageV));
+      acc.perConnectorVoltage.p.push(clip(per.a + per.b * r.voltageV));
+      acc.relativeVoltage.p.push(clip(rel.a + rel.b * (r.voltageV / trainRefs[c]!)));
     }
   }
-  const loco = (["C1", "C2", "C3"] as const).map((c) => {
+
+  // Leave one connector out, with a commissioning sweep for the relative model.
+  const loco = BENCH_CONNECTORS.map((c) => {
     const train = rows.filter((r) => r.connector !== c);
-    const test = rows.filter((r) => r.connector === c);
-    const f = ols(train.map((r) => r.voltageV), train.map((r) => r.degradationPct!));
-    return { connector: c, metrics: regressionMetrics(test.map((r) => r.degradationPct!), test.map((r) => clip(f.a + f.b * r.voltageV))) };
+    const mine = rows.filter((r) => r.connector === c);
+    const firstSweep = Math.min(...mine.map((r) => r.sweep));
+    const commissioning = mine.filter((r) => r.sweep === firstSweep);
+    const test = mine.filter((r) => r.sweep !== firstSweep);
+    const pooled = ols(train.map((r) => r.voltageV), train.map((r) => r.degradationPct!));
+    const rel = fitRelative(train, referencesOf(train));
+    const commissioningReferenceV = referenceVoltage(commissioning);
+    const y = test.map((r) => r.degradationPct!);
+    return {
+      connector: c,
+      commissioningReferenceV,
+      tested: test.length,
+      pooledVoltage: regressionMetrics(y, test.map((r) => clip(pooled.a + pooled.b * r.voltageV))),
+      relativeVoltage: regressionMetrics(y, test.map((r) => clip(rel.a + rel.b * (r.voltageV / commissioningReferenceV)))),
+    };
   });
-  const ref = BENCH_RUN.degradationReferenceV;
-  const maxDev = Math.max(...rows.map((r) => Math.abs(r.degradationPct! - 100 * (1 - r.voltageV / ref))));
-  const tb = regressionMetrics(yT, pT);
+
+  const lso = {
+    pooledVoltage: regressionMetrics(acc.pooledVoltage.y, acc.pooledVoltage.p),
+    perConnectorVoltage: regressionMetrics(acc.perConnectorVoltage.y, acc.perConnectorVoltage.p),
+    relativeVoltage: regressionMetrics(acc.relativeVoltage.y, acc.relativeVoltage.p),
+  };
+  const locoPooled = loco.map((l) => l.pooledVoltage.mae);
+  const locoRel = loco.map((l) => l.relativeVoltage.mae);
+  const maxDev = Math.max(...rows.map((r) => Math.abs(r.degradationPct! - 100 * (1 - r.voltageV / refs[r.connector]))));
+  const f2 = (v: number) => v.toFixed(2);
   return {
-    kind: "bench_linear_calibration",
+    kind: "bench_relative_voltage",
     intercept: fit.a,
     slope: fit.b,
+    references: refs,
     fittedOn: rows.length,
-    inputRangeV: [Math.min(...rows.map((r) => r.voltageV)), Math.max(...rows.map((r) => r.voltageV))],
+    inputRatioRange: [Math.min(...ratios), Math.max(...ratios)],
     inputScale: "experimental",
-    timeBlocked: tb,
-    leaveOneConnectorOut: loco,
-    formulaIntercept: 100,
-    formulaSlope: -100 / ref,
-    maxDeviationFromFormula: maxDev,
+    evaluation: { leaveOneSweepOut: lso, leaveOneConnectorOut: loco },
+    maxDeviationFromDefinition: maxDev,
     verdict:
-      `Fitted degradation = ${fit.a.toFixed(2)} ${fit.b < 0 ? "−" : "+"} ${Math.abs(fit.b).toFixed(2)} × V, against the log's own definition 100 − ${(100 / ref).toFixed(0)} × V. ` +
-      `On held-out time blocks the error is ${tb.mae.toFixed(2)} points (MAE). This recovers how the bench computes degradation; it converts a bench voltage into the bench's degradation index and says nothing about how fast a real connector wears.`,
+      `Degradation = ${f2(fit.a)} ${fit.b < 0 ? "−" : "+"} ${f2(Math.abs(fit.b))} × (V ÷ V_ref), with V_ref measured per connector ` +
+      `(C1 ${refs.C1.toFixed(3)} V, C2 ${refs.C2.toFixed(3)} V, C3 ${refs.C3.toFixed(3)} V). On sweeps it never saw the error is ${f2(lso.relativeVoltage.mae)} points (MAE), ` +
+      `against ${f2(lso.pooledVoltage.mae)} for one voltage line shared by all connectors. On a connector it never saw — given only that connector's first sweep — ` +
+      `it errs by ${f2(Math.min(...locoRel))}–${f2(Math.max(...locoRel))} points, against ${f2(Math.min(...locoPooled))}–${f2(Math.max(...locoPooled))} for the shared line. ` +
+      "It converts a bench voltage into the bench's degradation index; it says nothing about how fast a real connector wears.",
   };
 }
 
 export interface CalibrationEstimate {
   voltageV: number;
+  referenceV: number;
+  ratio: number;
   degradationPct: number;
-  /** Outside the voltage range the calibration was fitted on (still within bench scale). */
+  /** At or above the connector's healthy level: reported as 0 %. */
+  aboveReference: boolean;
+  /** V ÷ V_ref below the fitted range (near open circuit), still within bench scale. */
   extrapolated: boolean;
 }
 
-/** Inference for an experimental-scale (bench) voltage. Real-charger voltages are refused. */
-export function estimateFromBenchVoltage(cal: BenchCalibration, voltageV: number): CalibrationEstimate {
+/**
+ * Inference for an experimental-scale (bench) voltage on a known connector, or on a new one
+ * whose healthy reference voltage is given. Real-charger voltages are refused.
+ */
+export function estimateFromBenchVoltage(
+  cal: BenchCalibration,
+  voltageV: number,
+  target: { connector: BenchConnector } | { referenceV: number },
+): CalibrationEstimate {
   if (!Number.isFinite(voltageV) || voltageV < 0) throw new RangeError("Voltage must be a non-negative number.");
   if (voltageV > BENCH_RUN.adcReferenceV) {
     throw new RangeError(
       `${voltageV} V is not a bench reading: the calibration accepts experimental-circuit voltages up to ${BENCH_RUN.adcReferenceV} V. Real-charger voltages must not be fed to it.`,
     );
   }
-  const raw = voltageV > BENCH_RUN.degradationReferenceV ? 0 : cal.intercept + cal.slope * voltageV;
+  const referenceV = "connector" in target ? cal.references[target.connector] : target.referenceV;
+  if (!(referenceV > 0) || referenceV > BENCH_RUN.adcReferenceV) {
+    throw new RangeError(`The reference voltage must be above 0 V and at most ${BENCH_RUN.adcReferenceV} V (a bench level).`);
+  }
+  const ratio = voltageV / referenceV;
+  const aboveReference = ratio >= 1;
   return {
     voltageV,
-    degradationPct: clip(raw),
-    extrapolated: voltageV < cal.inputRangeV[0],
+    referenceV,
+    ratio,
+    degradationPct: aboveReference ? 0 : clip(cal.intercept + cal.slope * ratio),
+    aboveReference,
+    extrapolated: !aboveReference && ratio < cal.inputRatioRange[0],
   };
 }

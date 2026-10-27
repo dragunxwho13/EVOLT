@@ -8,7 +8,7 @@ import { benchReadings } from "@/lib/db/schema";
 import { notFound } from "@/lib/errors";
 import { analyzeBench } from "./analysis";
 import { benchInsights } from "./insights";
-import type { BenchConnector, BenchRecord } from "./parse";
+import { BENCH_CONNECTORS, type BenchConnector, type BenchRecord } from "./parse";
 import { scalingReport } from "./scaling";
 
 /** The saved calibration model and study, produced by `npm run model:degradation`. */
@@ -36,15 +36,21 @@ export async function loadBenchRecords(runId: string = BENCH_RUN.id): Promise<{ 
 }
 
 /** Everything the bench page shows, computed from the stored raw readings. */
-export async function benchOverview(scenarioId: string = DEFAULT_SCENARIO, connector: BenchConnector = "C1") {
+export async function benchOverview(
+  scenarioId: string = DEFAULT_SCENARIO,
+  connector: BenchConnector = "C1",
+  levelPct: number = BENCH_RUN.defaultScalingLevelPct,
+) {
   const { records, sourceSha256 } = await loadBenchRecords();
   if (records.length === 0) throw notFound("Bench run");
   const analysis = analyzeBench(records);
-  const scaling = scalingReport(analysis, scenarioId, connector);
+  const scaling = scalingReport(analysis, scenarioId, connector, levelPct);
   // The app re-fits the calibration from the database and checks it matches the saved model.
   const refit = fitBenchCalibration(records);
   const calibrationConsistent =
-    Math.abs(refit.intercept - savedCalibration.intercept) < 1e-9 && Math.abs(refit.slope - savedCalibration.slope) < 1e-9;
+    Math.abs(refit.intercept - savedCalibration.intercept) < 1e-9 &&
+    Math.abs(refit.slope - savedCalibration.slope) < 1e-9 &&
+    BENCH_CONNECTORS.every((c) => Math.abs(refit.references[c] - savedCalibration.references[c]) < 1e-9);
   return {
     run: { id: BENCH_RUN.id, description: BENCH_RUN.description, file: BENCH_RUN.file, rawFile: BENCH_RUN.rawFile, sourceSha256, savedFrom: degradationSources.bench.sha256 },
     analysis,

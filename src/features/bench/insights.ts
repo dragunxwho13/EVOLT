@@ -21,69 +21,60 @@ const f = (v: number, d = 2) => Number(v.toFixed(d)).toLocaleString("en-GB");
 export function benchInsights(a: BenchAnalysis, s: ScalingReport): BenchInsight[] {
   const out: BenchInsight[] = [];
   const c = a.comparison;
+  const list = (pick: (x: BenchAnalysis["connectors"][number]) => string) => a.connectors.map((x) => `${x.connector} ${pick(x)}`).join(", ");
+
   out.push({
-    key: "connectors-alike",
-    tone: "info",
-    title: "The three connectors behave almost identically",
-    observed: `At the same instants, C1, C2 and C3 differ by ${f(c.meanDegradationGap, 2)} percentage points of degradation and ${f(c.meanVoltageGap * 1000, 1)} mV on average.`,
-    evidence: "Mean over time steps of (largest − smallest) reading across the three connectors, live steps only.",
-    why: "With no contrast between connectors, the run cannot show that EVOLT tells a worn connector from a healthy one.",
-    next: "Give C1, C2 and C3 different, known series resistances (for example none, medium, high) and repeat the run.",
+    key: "connectors-differ",
+    tone: "attention",
+    title: "Each connector needs its own calibration",
+    observed: `The connectors have different loads (${list((x) => `${f(x.loadOhm, 0)} Ω`)}) and different healthy levels (${list((x) => `${f(x.referenceV, 3)} V`)}): a ${f(c.referenceSpreadPct * 100, 1)} % spread.`,
+    evidence: `Load = median V ÷ I; healthy level V_ref = median V ÷ (1 − degradation/100) — the log's own definition, ${BENCH_RUN.degradationDefinition}.`,
+    why: `Reading all three against one shared healthy level would misstate degradation by about ${f(c.pooledReferenceError, 1)} points (median). A voltage only means something relative to that connector's own healthy level.`,
+    next: "Record each connector's healthy voltage when it is installed (a commissioning sweep) and judge later readings against it. EVOLT's model does exactly this.",
   });
-  if (c.healthyOutlier && c.healthyOutlier.gapPct > 0.01) {
-    const o = c.healthyOutlier;
-    out.push({
-      key: "healthy-outlier",
-      tone: "attention",
-      title: `${o.connector} reads lower than the others in the healthy window`,
-      observed: `${o.connector} averages ${f(o.gapV * 1000, 0)} mV (${f(o.gapPct * 100, 1)} %) below the other two connectors while all three log 0 % degradation.`,
-      evidence: "Mean voltage of the rows logged at 0 % degradation, per connector.",
-      why: "It is the only connector-specific difference in the run — possibly extra contact resistance, possibly a wiring or ADC-channel offset. One run cannot tell which.",
-      next: `Swap ${o.connector} onto another ADC channel and repeat: if the offset follows the connector, inspect its contact; if it stays with the channel, calibrate the channel.`,
-    });
-  }
+
+  out.push({
+    key: "sweeps",
+    tone: "info",
+    title: "The run sweeps every connector through its full range, repeatedly",
+    observed: `Each connector goes from near-healthy to an open circuit and back: ${list((x) => (x.sweepPeriodS ? `every ${f(x.sweepPeriodS, 1)} s` : "once"))}. Open circuit (0 V) takes up ${list((x) => `${f(x.openShare * 100, 0)} %`)} of the readings.`,
+    evidence: `${a.timeSteps} time steps every ${f(a.stepS, 1)} s from ${f(a.startS, 1)} s to ${f(a.endS, 1)} s; a sweep is counted from one open-circuit episode to the next.`,
+    why: "Repeated full-range sweeps are good calibration data: the whole voltage–degradation curve is seen several times on every connector, so the model can be tested on sweeps it never saw. They are a controlled stress pattern, not natural wear, so they give no wear rate.",
+    next: "Add a slow, one-way wear test (many mating cycles, readings over hours or days) to measure how fast degradation actually builds up.",
+  });
+
   const p = s.proportional;
   out.push({
     key: "fault-scale",
     tone: "attention",
-    title: "At charger scale, the bench's worn state is a fault, not wear",
-    observed: `Scaled to ${s.scenario.label}, the worn state would lose ${f(p.realVoltageLostV, 0)} V and turn ${f(p.realHeatW / 1000, 2)} kW into heat in the connector.`,
-    evidence: `Method A: same resistance ratio as the bench (extra ${f(p.benchExtraOhm, 0)} Ω on a ${f(a.circuit.loadOhm, 0)} Ω load), × k_R ${s.factors.kR.toExponential(2)}; heat = I² × R per path.`,
-    why: "A real contact that wasted this much would melt; the bench proves the direction of the effect (more resistance → lower voltage), not its size.",
-    next: "Present the bench as a stress test of the detection idea. Use stepped, small resistances to model gradual wear.",
+    title: `At charger scale, a ${s.levelPct} % bench state is a serious fault`,
+    observed: `On ${s.connector}, scaled to ${s.scenario.label}, the ${s.levelPct} % state would lose ${f(p.realVoltageLostV, 0)} V and turn ${f(p.realHeatW / 1000, 2)} kW into heat in the connector.`,
+    evidence: `Method A: same resistance ratio as the bench (extra ${f(p.benchExtraOhm, 0)} Ω on a ${f(s.rows.find((r) => r.key === "load")?.bench ?? 0, 0)} Ω load), × k_R ${s.factors.kR.toExponential(2)}; heat = I² × R per path.`,
+    why: "A real contact wasting this much would overheat long before it reached this state. The bench shows the direction and shape of the effect (more resistance → lower voltage), not the size of real wear.",
+    next: "Treat the bench as a test of the detection idea. Model gradual wear with small, stepped resistances.",
   });
+
   const first = s.physics.find((r) => r.detectableOnBench);
   out.push({
     key: "resolution",
     tone: "info",
-    title: "Realistic wear is below the bench's resolution",
+    title: "Early real-world wear is below the bench's resolution",
     observed: first
-      ? `A real contact only becomes visible on the bench's ${f(s.physics[0]!.adcStepMv, 1)} mV ADC step at about ${first.wearMultiple} × the new-contact maximum (${f(first.resistanceMohm, 1)} mΩ) in this scenario.`
+      ? `A real contact only moves ${s.connector}'s reading by one ${f(s.physics[0]!.adcStepMv, 1)} mV ADC step at about ${first.wearMultiple} × the new-contact maximum (${f(first.resistanceMohm, 1)} mΩ) in this scenario.`
       : `No wear level up to ${s.physics[s.physics.length - 1]!.wearMultiple} × the new-contact maximum would move the bench reading by one ADC step (${f(s.physics[0]!.adcStepMv, 1)} mV).`,
     evidence: `Method B: R = ${s.physics[0]!.resistanceMohm} mΩ (datasheet maximum) × wear multiple, mapped back with ÷ k_R and the bench's voltage divider.`,
     why: "Gradual, real-world wear changes resistance by milliohms; a 10-bit ADC on this circuit cannot see the early stage of it.",
     next: "Measure contact resistance directly with a four-wire (milliohm) method, or amplify the voltage across the connector before the ADC.",
   });
-  const unreported = a.connectors.reduce((n, x) => n + x.counts.unreported, 0);
+
   out.push({
     key: "formula",
     tone: "info",
     title: "Degradation is calculated from voltage, not measured separately",
-    observed: `Logged degradation matches 100 × (1 − V ÷ ${BENCH_RUN.degradationReferenceV} V) within ${f(Math.max(...a.connectors.map((x) => x.formulaMaxDeviation ?? 0)), 2)} points; current equals V ÷ ${f(a.circuit.loadOhm, 0)} Ω.`,
-    evidence: "Largest |logged − formula| over readings at or below 4.0 V; median V ÷ I over live readings.",
-    why: "The bench has one independent signal — voltage. A model trained on its degradation column can only rediscover the formula.",
+    observed: `Logged degradation matches ${BENCH_RUN.degradationDefinition} within ${f(Math.max(...a.connectors.map((x) => x.formulaMaxDeviation ?? 0)), 2)} points on every connector, and current follows V ÷ R_load.`,
+    evidence: "Largest |logged − formula| over conducting readings, using each connector's measured V_ref; median V ÷ I per connector.",
+    why: "The bench has one independent signal — voltage. Any model trained on its degradation column rediscovers this definition; what the data does show is that the reference must be per connector.",
     next: "Add an independent current sensor and a temperature sensor on each connector.",
   });
-  if (unreported > 0) {
-    out.push({
-      key: "unreported",
-      tone: "attention",
-      title: "The deepest voltage sag has no degradation logged",
-      observed: `${unreported} readings (${unreported / 3} per connector) have a voltage but a blank degradation value — the lowest voltages of the run.`,
-      evidence: "Rows with V > 0 and an empty degradation cell. They are kept blank; nothing is filled in.",
-      why: "The most important region of the run is the least documented.",
-      next: "Log degradation wherever voltage is logged, including above 50 %.",
-    });
-  }
   return out;
 }

@@ -1,6 +1,6 @@
 /**
- * Loads the Arduino experimental-circuit log (database/data/arduino-bench-readings.csv,
- * converted cell-for-cell from database/data/raw/degradation_data.xlsx) into bench_readings.
+ * Loads the Arduino experimental-circuit log, run 2 (database/data/arduino-bench-run-2.csv,
+ * converted cell-for-cell from database/data/raw/arduino-bench-run-2.xlsx) into bench_readings.
  *
  *   npm run db:seed:bench
  *

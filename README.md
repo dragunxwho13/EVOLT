@@ -13,7 +13,7 @@ first, and why.
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)
 [![CI](https://github.com/dragunxwho13/EVOLT/actions/workflows/ci.yml/badge.svg)](https://github.com/dragunxwho13/EVOLT/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-231%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-236%20passing-2ea44f)
 [![Live demo](https://img.shields.io/badge/live%20demo-evolt--ev.vercel.app-000000?logo=vercel&logoColor=white)](https://evolt-ev.vercel.app)
 ![External APIs](https://img.shields.io/badge/external%20APIs-none-6e7781)
 
@@ -69,7 +69,7 @@ EVOLT turns charging data into two focused experiences built on one database:
 | | |
 |---|---|
 | **Hosting** | Vercel (functions in Singapore, `sin1`) + Neon PostgreSQL (Singapore) |
-| **Data loaded** | 13 labelled demo stations (29 chargers, 1,958 readings), the 1,000-session dataset with its trained models, and all 285 Arduino bench readings |
+| **Data loaded** | 13 labelled demo stations (29 chargers, 1,958 readings), the 1,000-session dataset with its trained models, and all 381 Arduino bench readings (run 2) |
 | **Browsing** | Every page and every read-only API is open to anyone |
 | **Editing** | Token mode: recording maintenance, setting service limits, importing data and updating action items need the admin token. Unlock it on **Company → Settings**; ask the project owner for the token |
 | **Health check** | [`/api/health`](https://evolt-ev.vercel.app/api/health) → `{"status":"ok","database":"ok",…}` |
@@ -149,7 +149,7 @@ Works on the [live demo](https://evolt-ev.vercel.app) or a local copy.
 | 6 | **Learned model** → type `4.2` → **Classify** | A live prediction from the stored model, with its rule and tested accuracy |
 | 7 | **Service forecast** → open **DEMO-13-C2** | Likely service date with its range and the limit line; readings restated at 20 °C. **DEMO-13-C3** rose only because it was measured hot, and is not flagged |
 | 8 | **Repair checks** | One cleaning held, one relapsed after about a month; record new work on a charger page and set your own service limit |
-| 9 | **Arduino bench** | C1, C2 and C3 side by side; pick a charger to see each quantity scaled (Arduino reading → method → estimate → published reference); type `2.2` in the calibration |
+| 9 | **Arduino bench** | C1, C2 and C3 side by side, each with its own healthy level; the chart shows why the model uses relative voltage; pick a charger and a degradation level to see each quantity scaled (Arduino reading → method → estimate → published reference); type `1.7` V on C1 and C2 in the estimator and compare |
 | 10 | **I'm a driver** → open a demo station → **Book a slot** | Join the queue (next free start, sessions ahead) or pick a time; the day bar shows each booking and its 10-minute gap. Then **My bookings** to view or cancel. **Book several vehicles** plans a fleet across the station's chargers |
 
 ---
@@ -196,7 +196,7 @@ Works on the [live demo](https://evolt-ev.vercel.app) or a local copy.
 | **Repair checks** | Each recorded job checked against later readings (held, relapsed, partly improved, no effect) and the held rate per kind of work |
 | **Chargers / Health alerts** | Per-charger evidence charts; acknowledge, resolve or dismiss alerts |
 | **Learned model** | What the model can and cannot predict, plus a live classifier and the degradation study |
-| **Arduino bench** | The three bench connectors side by side, the parameter-by-parameter scaling table, heat and loss-share charts, real-wear physics, and the bench calibration |
+| **Arduino bench** | The three bench connectors side by side, the relative-voltage model and how it was tested, the parameter-by-parameter scaling table at a chosen degradation level, heat and loss-share charts, real-wear physics, and the estimator |
 | **Data import** | Drag-and-drop CSV/JSON with auto-detection, column mapping, validation and data-quality findings |
 
 **Priority** follows explicit rules:
@@ -218,17 +218,26 @@ Works on the [live demo](https://evolt-ev.vercel.app) or a local copy.
 
 <br/>
 
-Our small experimental circuit logs three connectors (C1–C3). EVOLT stores those readings
-unchanged, measures the circuit from them (270 Ω load, 4.21 V healthy, 2.20 V worn) and scales
-each quantity by its own law — voltage × k_V, current × k_I, resistance × k_V/k_I, power × k_V·k_I;
-ratios unchanged; temperature only with a calibrated thermal resistance.
+Our small experimental circuit logs three connectors (C1–C3), each with its own load, every 0.5 s
+for about a minute (run 2: 127 time steps, 381 readings). Each connector is swept repeatedly from
+near-healthy to an open circuit and back. EVOLT stores the readings unchanged, measures each
+connector's circuit from them, and scales each quantity by its own law — voltage × k_V,
+current × k_I, resistance × k_V/k_I, power × k_V·k_I; ratios unchanged; temperature only with a
+calibrated thermal resistance.
+
+| | C1 | C2 | C3 |
+|---|---|---|---|
+| Load (median V ÷ I) | 493 Ω | 350 Ω | 388 Ω |
+| Healthy level V_ref (0 %) | 3.455 V | 3.067 V | 3.193 V |
+| Sweep to open circuit | every 15 s | every 20 s | every 22.5 s |
 
 | Finding | Evidence |
 |---|---|
-| The worn bench state is a **fault** at charger scale | ≈ 110 V lost and ≈ 1.8 kW of heat in one connector at 7.4 kW AC (Method A) |
-| Real wear is **below the bench's resolution** | a new CCS2 contact is ≤ 0.5 mΩ (datasheet); at 7.4 kW AC wear becomes visible on the 4.88 mV ADC step only at ≈ 10 mΩ (Method B) |
-| The three connectors behave almost alike | 0.07-point average gap; only C2 reads 2.2 % lower when healthy |
-| Degradation in the supplied training file is a **formula** | = clip(100 × loss ÷ consumed); no degradation predictor is deployed from it |
+| **Each connector needs its own calibration** | healthy levels differ by 12 %; one shared level would misstate degradation by ≈ 1.7 points |
+| **The model improved:** relative voltage V ÷ V_ref | 0.09 points error on held-out sweeps (one shared voltage line: 2.28); on an unseen connector, given one commissioning sweep, 0.09–0.12 (shared line: 1.05–4.52) |
+| A 50 % bench state is a **fault** at charger scale | 115 V lost and ≈ 1.8 kW of heat in one connector at 7.4 kW AC; 200 V and 12.5 kW at 50 kW DC (Method A) |
+| Early real wear is **below the bench's resolution** | a new CCS2 contact is ≤ 0.5 mΩ (datasheet); at 50 kW DC wear reaches one 4.88 mV ADC step only at 10–20 × that (Method B) |
+| The sweeps are a controlled pattern | they calibrate the voltage–degradation curve well but give no rate of wear over time |
 
 Every value is tagged **Experimental circuit**, **Real-world estimate** or **Commercial reference**
 (IEC 62196-1, MIDA and HARTING datasheets, ADAC tests). Details → [docs/scaling.md](docs/scaling.md)
@@ -334,7 +343,7 @@ src/features/       recommendations · insights · sessions · anomaly-detection
 src/config/         analysis thresholds · scaling assumptions and references
 src/components/     UI: driver, insights, charts, primitives
 database/           SQL migrations · demo seed · dataset and bench loaders · data/ (raw files)
-models/             saved model reports (session classifiers, degradation study + calibration)
+models/             saved model reports (session classifiers, degradation study + bench model)
 scripts/            One-click launcher · offline model training
 tests/              unit · integration · e2e
 docs/               Detailed documentation (below)
@@ -345,21 +354,21 @@ Full breakdown and design decisions → [docs/architecture.md](docs/architecture
 </details>
 
 <details>
-<summary><b>Quality and testing</b> — 231 automated tests</summary>
+<summary><b>Quality and testing</b> — 236 automated tests</summary>
 
 <br/>
 
 | Suite | Count | Covers |
 |---|---|---|
-| Unit | 161 | Slot, queue, buffer and fleet scheduling, charge-time estimates, IST calendar; metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security, temperature correction, forecasts, repair outcomes, bench parsing, scaling laws, contact physics, degradation study and calibration, model reproducibility |
-| Integration | 36 | Real API handlers + PostgreSQL: bookings without an admin token, overlap and buffer refusals, simultaneous requests for one slot, queue order, codes, cancellation, fleet plans; imports, reviews, CSV export, predictions, access control, service limits, maintenance and repair verification, raw bench storage and the bench APIs |
-| End-to-end | 34 | Booking a slot, joining the queue, finding a booking on another device, fleet booking and cancelling (desktop and phone); both user journeys in Chromium (desktop + mobile), maps and popups, forecasts and repair checks, the Arduino bench page and estimator, regressions, wording checks |
+| Unit | 165 | Slot, queue, buffer and fleet scheduling, charge-time estimates, IST calendar; metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security, temperature correction, forecasts, repair outcomes, bench log (run 2) parsing and per-connector circuit values checked against pandas, scaling laws at every level, contact physics, degradation study, the relative-voltage model against simpler models on held-out sweeps and connectors, model reproducibility |
+| Integration | 37 | Real API handlers + PostgreSQL: bookings without an admin token, overlap and buffer refusals, simultaneous requests for one slot, queue order, codes, cancellation, fleet plans; imports, reviews, CSV export, predictions, access control, service limits, maintenance and repair verification, raw bench storage (run 2, value for value), removal of earlier bench runs, and the bench APIs per connector and level |
+| End-to-end | 34 | Booking a slot, joining the queue, finding a booking on another device, fleet booking and cancelling (desktop and phone); both user journeys in Chromium (desktop + mobile), maps and popups, forecasts and repair checks, the Arduino bench page (level selector, per-connector and new-connector estimates), regressions, wording checks |
 
 ```bash
 npm run lint && npm run typecheck && npm run test:unit
 ```
 
-Last full run: 27 Oct 2026 — lint, type check and production build clean; 161 unit, 36 integration and 34 end-to-end passed.
+Last full run: 27 Oct 2026 — lint, type check and production build clean; 165 unit, 37 integration and 34 end-to-end passed.
 
 **Checked on the live demo (26 Oct 2026):** the health endpoint, all 13 pages, and the
 recommendation, station, action-item, maintenance and bench-estimate APIs return real data;

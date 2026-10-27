@@ -112,8 +112,8 @@ The demo stations, the example files and the supplied session dataset use this v
 
 | File | What it is |
 |---|---|
-| `raw/degradation_data.xlsx` | The Arduino bench log as delivered (unchanged) |
-| `arduino-bench-readings.csv` | The same cells, converted to CSV; loaded into `bench_readings` |
+| `raw/arduino-bench-run-2.xlsx` | The Arduino bench log (run 2) as delivered (unchanged) |
+| `arduino-bench-run-2.csv` | The same cells, converted to CSV (columns `Time_s`, `Connector1_V`, `Connector1_mA`, `Connector1_Deg_%`, … `Connector3_Deg_%`); loaded into `bench_readings` as run `bench-run-2` |
 | `unified-evolt-arduino-training-dataset.csv` | The unified training dataset (1,000 rows, all derived from the charging sessions — see [machine learning](machine-learning.md)) |
 | `SHA256SUMS` | Checksums; the tests verify the bench CSV against it |
 

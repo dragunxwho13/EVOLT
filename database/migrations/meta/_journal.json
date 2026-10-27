@@ -50,6 +50,13 @@
       "when": 1793300000000,
       "tag": "0006_driver_bookings",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793400000000,
+      "tag": "0007_replace_bench_run",
+      "breakpoints": true
     }
   ]
 }

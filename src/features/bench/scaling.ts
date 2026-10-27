@@ -2,10 +2,11 @@
  * From the Arduino bench to a representative charger — parameter by parameter.
  *
  * The bench is a resistive voltage divider: supply → connector (extra series resistance when
- * worn) → fixed load. Each quantity is scaled by the relationship that governs it, never by
- * one common multiplier:
+ * worn) → fixed load. Each connector has its own load and its own healthy reference voltage
+ * V_ref (both measured from the log). Each quantity is scaled by the relationship that governs
+ * it, never by one common multiplier:
  *
- *   k_V = V_path / V_healthy            voltage across one current path
+ *   k_V = V_path / V_ref                voltage across one current path
  *   k_I = I_rated / I_healthy           current in one conductor
  *   k_R = k_V / k_I                     resistance (Ohm's law: R = V / I)
  *   k_P = k_V × k_I                     power per path (P = V × I)
@@ -13,8 +14,9 @@
  *   ratios (degradation %, loss share)  dimensionless → unchanged by scaling
  *
  * Two methods answer different questions:
- *  A. Proportional (similarity): keep the bench's resistance RATIO and enlarge it. Answers
- *     "what would the bench's worn state look like at charger size?"
+ *  A. Proportional (similarity): keep the bench's resistance RATIO at a chosen level of the
+ *     degradation index and enlarge it. Answers "what would that bench state look like at
+ *     charger size?"
  *  B. Contact physics: start from a published new-contact resistance and wear multiples, use
  *     the charger's controlled current (P = I²R, ΔV = I·R), and map back to what the bench
  *     would read. Answers "what does real wear look like, and could the bench see it?"
@@ -25,7 +27,7 @@
  * when a calibrated thermal resistance is configured.
  */
 import { ASSUMPTIONS, BENCH_RUN, REFERENCE_VALUES, REFERENCES, SCENARIOS, type Scenario } from "@/config/scaling";
-import type { BenchAnalysis, ConnectorSummary } from "./analysis";
+import { voltageAtLevel, type BenchAnalysis, type ConnectorSummary } from "./analysis";
 import type { BenchConnector } from "./parse";
 
 export interface CircuitBaseline {
@@ -75,7 +77,7 @@ export interface ProportionalResult {
   benchHeatMw: number;
 }
 
-/** Method A for a single bench voltage (e.g. a connector's degraded median). */
+/** Method A for a single bench voltage (e.g. the voltage at a chosen degradation level). */
 export function proportional(base: CircuitBaseline, s: Scenario, benchV: number): ProportionalResult {
   const ratio = benchV / base.healthyV;
   const benchExtraOhm = base.loadOhm * (base.healthyV / benchV - 1);
@@ -179,14 +181,13 @@ function lossRange(s: Scenario): { range: [number, number]; label: string } {
  * The comparison table for one connector in one scenario. Bench values are that connector's
  * own measurements; references are only the published figures in REFERENCES.
  */
-export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds: number): ScalingRow[] {
-  if (summary.healthyMeanV === null || summary.healthyMeanMa === null || summary.degradedMedianV === null) return [];
-  const base: CircuitBaseline = {
-    loadOhm: summary.loadOhm,
-    healthyV: summary.healthyMeanV,
-    healthyMa: summary.healthyMeanMa,
-    degradedV: summary.degradedMedianV,
-  };
+export function baselineAt(summary: ConnectorSummary, levelPct: number): CircuitBaseline {
+  return { loadOhm: summary.loadOhm, healthyV: summary.referenceV, healthyMa: summary.healthyMa, degradedV: voltageAtLevel(summary, levelPct) };
+}
+
+export function scalingTable(summary: ConnectorSummary, s: Scenario, levelPct: number): ScalingRow[] {
+  if (!Number.isFinite(summary.referenceV) || !Number.isFinite(summary.loadOhm) || levelPct <= 0 || levelPct >= 100) return [];
+  const base = baselineAt(summary, levelPct);
   const f = scaleFactors(base, s);
   const p = proportional(base, s, base.degradedV);
   const newMohm = REFERENCE_VALUES.newContactResistanceMaxMohm.value;
@@ -197,15 +198,15 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
   const deliveredKwh = (deliveredPowerW(s) * ASSUMPTIONS.sessionHours) / 1000;
   const benchCurrentDeg = (base.healthyMa / 1000) * (base.degradedV / base.healthyV);
   const benchHeatMw = p.benchHeatMw;
-  const benchRunS = runSeconds;
   const thermal = ASSUMPTIONS.contactThermalResistanceKPerW;
 
   return [
     {
       key: "voltage",
-      parameter: "Voltage across one current path (healthy)",
+      parameter: "Voltage across one current path (healthy, 0 %)",
       unit: { bench: "V", real: "V" },
       bench: base.healthyV,
+      benchNote: "The connector's own reference V_ref, from the log's definition",
       method: `× k_V = ${fmt(f.kV, 1)} (${s.pathVoltage} V ÷ ${fmt(base.healthyV, 3)} V)`,
       scaled: s.pathVoltage,
       reference: `IEC 62196-1 maximum ${s.kind}: ${fmt(maxV)} V`,
@@ -214,9 +215,10 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
     },
     {
       key: "current",
-      parameter: "Current in one conductor (healthy)",
+      parameter: "Current in one conductor (healthy, 0 %)",
       unit: { bench: "mA", real: "A" },
       bench: base.healthyMa,
+      benchNote: "V_ref ÷ R_load",
       method: `× k_I = ${fmt(f.kI, 0)} (${s.current} A ÷ ${fmt(base.healthyMa, 2)} mA)`,
       scaled: s.current,
       reference:
@@ -231,7 +233,7 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
       parameter: "Load resistance (healthy path)",
       unit: { bench: "Ω", real: "Ω" },
       bench: base.loadOhm,
-      benchNote: `Median V ÷ I of live readings (spread ${fmt(summary.loadSpreadOhm, 1)} Ω)`,
+      benchNote: `Median V ÷ I of readings ≥ 1 mA (middle 50 %: ${fmt(summary.loadIqrOhm[0], 0)}–${fmt(summary.loadIqrOhm[1], 0)} Ω)`,
       method: `× k_R = ${f.kR.toExponential(2)} (k_V ÷ k_I)`,
       scaled: base.loadOhm * f.kR,
       reference: null,
@@ -240,10 +242,10 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
     },
     {
       key: "extra_resistance",
-      parameter: "Extra series resistance in the worn connector",
+      parameter: `Extra series resistance at ${levelPct} % degradation`,
       unit: { bench: "Ω", real: "Ω" },
       bench: p.benchExtraOhm,
-      benchNote: `R_L × (V_healthy ÷ V_worn − 1), V_worn = ${fmt(base.degradedV, 3)} V (median of worn readings)`,
+      benchNote: `R_L × (V_ref ÷ V − 1), V = ${fmt(base.degradedV, 3)} V at ${levelPct} %`,
       method: "Method A: same resistance ratio as the bench (extra ÷ load), ≈ × k_R",
       scaled: p.realExtraOhm,
       reference: `New CCS2 contact: ≤ ${newMohm} mΩ (MIDA datasheet)`,
@@ -252,7 +254,7 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
     },
     {
       key: "voltage_lost",
-      parameter: "Voltage lost in the worn connector",
+      parameter: `Voltage lost in the connector at ${levelPct} %`,
       unit: { bench: "V", real: "V" },
       bench: base.healthyV - base.degradedV,
       method: "Method A: × k_V",
@@ -263,7 +265,7 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
     },
     {
       key: "heat",
-      parameter: "Heat generated in the worn connector",
+      parameter: `Heat generated in the connector at ${levelPct} %`,
       unit: { bench: "mW", real: "W" },
       bench: benchHeatMw,
       benchNote: `I² × R_extra with I = ${fmt(benchCurrentDeg * 1000, 2)} mA`,
@@ -283,14 +285,14 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
       scaledNote: s.powerFactor < 1 ? `includes PF ${s.powerFactor} on delivered power` : undefined,
       reference: `ADAC: ${loss.range[0]}–${loss.range[1]} % (${loss.label})`,
       referenceIds: ["adac"],
-      difference: `${fmt(((p.realHeatW / (p.realHeatW + p.realDeliveredW)) * 100) / loss.range[1], 1)} × the top of the whole-chain range — the bench state is a fault, not gradual wear`,
+      difference: `${fmt(((p.realHeatW / (p.realHeatW + p.realDeliveredW)) * 100) / loss.range[1], 1)} × the top of the whole-chain range`,
     },
     {
       key: "energy",
       parameter: `Energy lost in the connector per ${ASSUMPTIONS.sessionHours} h session`,
       unit: { bench: "mWh", real: "kWh" },
-      bench: (benchHeatMw * benchRunS) / 3600,
-      benchNote: `over the ${benchRunS} s bench run`,
+      bench: benchHeatMw * ASSUMPTIONS.sessionHours,
+      benchNote: `bench heat held for ${ASSUMPTIONS.sessionHours} h`,
       method: `Method A heat × ${ASSUMPTIONS.sessionHours} h (time is chosen, not scaled)`,
       scaled: (p.realHeatW * ASSUMPTIONS.sessionHours) / 1000,
       reference: `ADAC whole-chain loss on ${fmt(deliveredKwh, 1)} kWh: ${fmt((deliveredKwh * loss.range[0]) / 100, 2)}–${fmt((deliveredKwh * loss.range[1]) / 100, 2)} kWh`,
@@ -314,8 +316,8 @@ export function scalingTable(summary: ConnectorSummary, s: Scenario, runSeconds:
       key: "degradation",
       parameter: "Degradation index (bench definition)",
       unit: { bench: "%", real: "%" },
-      bench: summary.degradationMean,
-      benchNote: `Mean of logged values; defined as 100 × (1 − V ÷ ${BENCH_RUN.degradationReferenceV} V)`,
+      bench: levelPct,
+      benchNote: `Chosen level; defined as ${BENCH_RUN.degradationDefinition} (V_ref ${fmt(summary.referenceV, 3)} V)`,
       method: "Not scaled: it is a property of the bench's voltage reference, not of charger wear",
       scaled: null,
       scaledNote: "No real-world equivalent",
@@ -333,26 +335,28 @@ export function referenceList(ids: readonly string[]) {
 export interface ScalingReport {
   scenario: Scenario;
   connector: BenchConnector;
+  levelPct: number;
   factors: Factors;
   rows: ScalingRow[];
   physics: ContactPhysicsRow[];
   proportional: ProportionalResult;
 }
 
-export function scalingReport(analysis: BenchAnalysis, scenarioId: string, connector: BenchConnector): ScalingReport {
+export function scalingReport(
+  analysis: BenchAnalysis,
+  scenarioId: string,
+  connector: BenchConnector,
+  levelPct: number = BENCH_RUN.defaultScalingLevelPct,
+): ScalingReport {
   const s = findScenario(scenarioId);
   const summary = analysis.connectors.find((c) => c.connector === connector)!;
-  const base: CircuitBaseline = {
-    loadOhm: summary.loadOhm,
-    healthyV: summary.healthyMeanV ?? analysis.circuit.healthyV,
-    healthyMa: summary.healthyMeanMa ?? analysis.circuit.healthyMa,
-    degradedV: summary.degradedMedianV ?? analysis.circuit.degradedV,
-  };
+  const base = baselineAt(summary, levelPct);
   return {
     scenario: s,
     connector,
+    levelPct,
     factors: scaleFactors(base, s),
-    rows: scalingTable(summary, s, analysis.durationS),
+    rows: scalingTable(summary, s, levelPct),
     physics: contactPhysics(base, s),
     proportional: proportional(base, s, base.degradedV),
   };

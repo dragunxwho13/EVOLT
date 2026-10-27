@@ -8,11 +8,14 @@ const SPLIT_LABELS = { station_grouped_cv: "Held-out stations (5-fold, grouped)"
 /** The leakage-aware degradation study from models/degradation-report.json (npm run model:degradation). */
 export function DegradationStudy() {
   const { study, calibration, sources } = report;
+  const lso = calibration.evaluation.leaveOneSweepOut;
+  const loco = calibration.evaluation.leaveOneConnectorOut;
+  const range = (v: number[]) => `${formatNumber(Math.min(...v), 2)}–${formatNumber(Math.max(...v), 2)} pts`;
   return (
     <Panel
       className="mt-6"
       title="Can connector degradation be predicted?"
-      description={`From the unified training dataset (${sources.unified.rows} rows) and the Arduino bench log. Regression metrics on data the model never saw. Reproduce with npm run model:degradation.`}
+      description={`From the unified training dataset (${sources.unified.rows} rows) and the Arduino bench log (run 2). Regression metrics on data the model never saw. Reproduce with npm run model:degradation.`}
     >
       <div className="space-y-5 text-sm">
         <div>
@@ -77,12 +80,43 @@ export function DegradationStudy() {
         </div>
 
         <div>
-          <h3 className="font-semibold text-ink">3. What is deployed: the bench calibration</h3>
+          <h3 className="font-semibold text-ink">3. What is deployed: the bench model (relative voltage)</h3>
           <p className="mt-1 text-muted">{calibration.verdict}</p>
-          <p className="mt-1 text-muted">
-            Held out one connector at a time:{" "}
-            {calibration.leaveOneConnectorOut.map((l) => `${l.connector} ${formatNumber(l.metrics.mae, 2)} pts`).join(" · ")} (MAE). It accepts bench voltages only (≤ 5 V);
-            real-charger voltages are refused. <Link href="/company/bench" className="text-signal hover:underline">Try it on the Arduino bench page</Link>.
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px]" aria-label="Bench model comparison">
+              <thead className="border-b border-line text-left text-muted">
+                <tr>
+                  <th scope="col" className="py-1.5 pr-3 font-medium">Model</th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-medium">Held-out sweeps (MAE)</th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-medium">Unseen connector (MAE)</th>
+                </tr>
+              </thead>
+              <tbody className="num divide-y divide-line">
+                <tr>
+                  <th scope="row" className="py-1.5 pr-3 text-left font-normal">One voltage line for all connectors</th>
+                  <td className="px-3 py-1.5 text-right">{formatNumber(lso.pooledVoltage.mae, 2)} pts</td>
+                  <td className="px-3 py-1.5 text-right">{range(loco.map((l) => l.pooledVoltage.mae))}</td>
+                </tr>
+                <tr>
+                  <th scope="row" className="py-1.5 pr-3 text-left font-normal">A separate voltage line per connector</th>
+                  <td className="px-3 py-1.5 text-right">{formatNumber(lso.perConnectorVoltage.mae, 2)} pts</td>
+                  <td className="px-3 py-1.5 text-right text-faint">needs that connector&apos;s full history</td>
+                </tr>
+                <tr className="font-medium text-ink">
+                  <th scope="row" className="py-1.5 pr-3 text-left">Relative voltage V ÷ V_ref (deployed)</th>
+                  <td className="px-3 py-1.5 text-right">{formatNumber(lso.relativeVoltage.mae, 2)} pts</td>
+                  <td className="px-3 py-1.5 text-right">{range(loco.map((l) => l.relativeVoltage.mae))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-faint">
+            Held-out sweeps: every sweep of every connector left out in turn. Unseen connector: trained on the other two; the relative model gets only the unseen
+            connector&apos;s first sweep (commissioning) to set its V_ref and is tested on the rest. Open-circuit readings (0 V = 100 % by definition) are excluded.
+          </p>
+          <p className="mt-2 text-muted">
+            It accepts bench voltages only (≤ 5 V); real-charger voltages are refused.{" "}
+            <Link href="/company/bench" className="text-signal hover:underline">Try it on the Arduino bench page</Link>.
           </p>
         </div>
       </div>

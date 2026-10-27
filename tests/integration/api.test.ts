@@ -459,10 +459,10 @@ describe("API and persistence", () => {
   it("stores the Arduino bench log unchanged and serves the scaling, connectors and calibration from it", async () => {
     expect((await benchGET(get("/api/bench"))).status).toBe(404);
     const url = process.env.TEST_DATABASE_URL!;
-    expect(await loadBench(url)).toMatch(/loaded: 95 time steps × 3 connectors = 285 readings/);
+    expect(await loadBench(url)).toMatch(/loaded: 127 time steps × 3 connectors = 381 readings/);
     expect(await loadBench(url)).toMatch(/already stored/);
 
-    // Raw readings in the database are exactly the file's values, blanks included.
+    // Raw readings in the database are exactly the file's values.
     const stored = await getDb().select().from(benchReadings);
     const file = parseBenchCsv(readFileSync(BENCH_RUN.file, "utf8")).records;
     expect(stored).toHaveLength(file.length);
@@ -471,27 +471,48 @@ describe("API and persistence", () => {
       expect([s.voltageV, s.currentMa, s.degradationPct, s.sourceRow]).toEqual([r.voltageV, r.currentMa, r.degradationPct, r.sourceRow]);
     }
 
-    const res = await benchGET(get("/api/bench?scenario=ac-22&connector=C2"));
+    const res = await benchGET(get("/api/bench?scenario=ac-22&connector=C2&level=75"));
     expect(res.status).toBe(200);
-    const d = (await body<Data<{ analysis: { connectors: { connector: string }[] }; scaling: { scenario: { id: string }; connector: string; rows: { key: string }[] }; calibrationConsistent: boolean; insights: unknown[] }>>(res)).data;
+    const d = (await body<Data<{ run: { id: string }; analysis: { connectors: { connector: string }[] }; scaling: { scenario: { id: string }; connector: string; levelPct: number; rows: { key: string }[] }; calibrationConsistent: boolean; insights: unknown[] }>>(res)).data;
+    expect(d.run.id).toBe("bench-run-2");
     expect(d.analysis.connectors.map((c) => c.connector)).toEqual(["C1", "C2", "C3"]);
-    expect(d.scaling).toMatchObject({ scenario: { id: "ac-22" }, connector: "C2" });
+    expect(d.scaling).toMatchObject({ scenario: { id: "ac-22" }, connector: "C2", levelPct: 75 });
     expect(d.scaling.rows.map((r) => r.key)).toContain("extra_resistance");
     expect(d.calibrationConsistent).toBe(true);
     expect(d.insights.length).toBeGreaterThan(3);
     expect((await benchGET(get("/api/bench?scenario=mars"))).status).toBe(400);
     expect((await benchGET(get("/api/bench?connector=C9"))).status).toBe(400);
+    expect((await benchGET(get("/api/bench?level=33"))).status).toBe(400);
     expect((await benchGET(get("/api/bench?_vercel_share=abc"))).status).toBe(200);
 
-    const est = (await body<Data<{ estimate: { degradationPct: number }; realWorld: { realHeatW: number } | null }>>(await benchEstimateGET(get("/api/bench/estimate?voltage=2.2&scenario=dc-50")))).data;
-    expect(est.estimate.degradationPct).toBeCloseTo(45, 0);
-    expect(est.realWorld!.realHeatW).toBeGreaterThan(1000);
-    const healthy = (await body<Data<{ realWorld: unknown }>>(await benchEstimateGET(get("/api/bench/estimate?voltage=4.3")))).data;
+    type Est = { estimate: { degradationPct: number; referenceV: number; aboveReference: boolean }; realWorld: { realHeatW: number } | null };
+    const estimate = async (q: string) => (await body<Data<Est>>(await benchEstimateGET(get(`/api/bench/estimate?${q}`)))).data;
+    // The same 1.7 V means different degradation on different connectors.
+    const onC1 = await estimate("voltage=1.7&connector=C1&scenario=dc-50");
+    const onC2 = await estimate("voltage=1.7&connector=C2&scenario=dc-50");
+    expect(onC1.estimate.degradationPct).toBeCloseTo(50.8, 0);
+    expect(onC2.estimate.degradationPct).toBeCloseTo(44.6, 0);
+    expect(onC1.realWorld!.realHeatW).toBeGreaterThan(1000);
+    // A new connector, given its healthy level.
+    expect((await estimate("voltage=1.65&referenceV=3.3")).estimate.degradationPct).toBeCloseTo(50, 0);
+    const healthy = await estimate("voltage=3.6&connector=C1");
+    expect(healthy.estimate.aboveReference).toBe(true);
     expect(healthy.realWorld).toBeNull();
+    expect((await benchEstimateGET(get("/api/bench/estimate?voltage=1&referenceV=12"))).status).toBe(400);
     const refused = await benchEstimateGET(get("/api/bench/estimate?voltage=230"));
     expect(refused.status).toBe(400);
     expect(await body(refused)).toMatchObject({ error: { message: expect.stringMatching(/not a bench reading/) } });
     expect((await benchEstimateGET(get("/api/bench/estimate?voltage=abc"))).status).toBe(400);
+  });
+
+  it("removes readings of any earlier bench run, keeping run 2", async () => {
+    const db = getDb();
+    await db.insert(benchReadings).values({ runId: "bench-run-1", connector: "C1", timeS: 1, voltageV: 4, currentMa: 15, degradationPct: 0, sourceRow: 1, sourceFile: "old.csv", sourceSha256: "x" });
+    const before = (await db.select().from(benchReadings)).length;
+    await db.execute(sql.raw(readFileSync("database/migrations/0007_replace_bench_run.sql", "utf8").replace(/--.*$/gm, "")));
+    const after = await db.select().from(benchReadings);
+    expect(after).toHaveLength(before - 1);
+    expect(new Set(after.map((r) => r.runId))).toEqual(new Set(["bench-run-2"]));
   });
 
   it("maps an unreachable database to a 503 without leaking details", async () => {

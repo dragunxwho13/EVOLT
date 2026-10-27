@@ -1,6 +1,6 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from "recharts";
 import { formatNumber } from "@/lib/utils/format";
 
 const tooltipStyle = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, fontSize: 12, color: "var(--ink)" };
@@ -15,7 +15,7 @@ export interface TracePoint {
 }
 
 /** Raw bench voltage of each connector over the run — one line per connector, never averaged. */
-export function ConnectorTraces({ points, healthyV, degradedV }: { points: TracePoint[]; healthyV: number; degradedV: number }) {
+export function ConnectorTraces({ points, references }: { points: TracePoint[]; references: Record<"C1" | "C2" | "C3", number> }) {
   return (
     <div className="space-y-2">
       <div style={{ height: 260 }} role="img" aria-label="Voltage of connectors C1, C2 and C3 over the bench run">
@@ -23,7 +23,7 @@ export function ConnectorTraces({ points, healthyV, degradedV }: { points: Trace
           <LineChart data={points} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
             <CartesianGrid stroke="var(--line)" strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tick={axis} stroke="var(--line-strong)" unit=" s" />
-            <YAxis domain={[0, 4.6]} tick={axis} stroke="var(--line-strong)" width={44} unit=" V" />
+            <YAxis domain={[0, 3.6]} tick={axis} stroke="var(--line-strong)" width={44} unit=" V" />
             <Tooltip contentStyle={tooltipStyle} labelFormatter={(t) => `${t} s`} formatter={(v, n) => [`${formatNumber(Number(v), 3)} V`, String(n)]} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {(["C1", "C2", "C3"] as const).map((c) => (
@@ -33,9 +33,61 @@ export function ConnectorTraces({ points, healthyV, degradedV }: { points: Trace
         </ResponsiveContainer>
       </div>
       <p className="text-xs text-muted">
-        Experimental circuit, as logged. Healthy level ≈ {formatNumber(healthyV, 2)} V; worn level ≈ {formatNumber(degradedV, 2)} V. Zero readings are the start of
-        the run and one dropout at 10 s.
+        Experimental circuit, as logged. Healthy (0 %) levels: C1 {formatNumber(references.C1, 3)} V, C2 {formatNumber(references.C2, 3)} V, C3 {formatNumber(references.C3, 3)} V.
+        Readings at 0 V are open circuit (100 % logged), the bottom of each sweep.
       </p>
+    </div>
+  );
+}
+
+export interface CalibrationPoint {
+  connector: "C1" | "C2" | "C3";
+  voltageV: number;
+  ratio: number;
+  degradationPct: number;
+}
+
+/**
+ * The same readings twice: against raw voltage (three separate lines, one per connector) and
+ * against voltage relative to each connector's healthy level (one line). The second is the model.
+ */
+export function RelativeVoltageScatter({ points, model }: { points: CalibrationPoint[]; model: { intercept: number; slope: number } }) {
+  // The model line, clipped to the 0–100 % scale like every prediction.
+  const line = [0, 1].map((x) => ({ ratio: x, fit: Math.min(100, Math.max(0, model.intercept + model.slope * x)) }));
+  const panel = (x: "voltageV" | "ratio", title: string, unit: string, domain: [number, number]) => (
+    <figure className="min-w-0">
+      <figcaption className="mb-1 text-xs font-medium text-muted">{title}</figcaption>
+      <div style={{ height: 220 }} role="img" aria-label={`Logged degradation against ${title.toLowerCase()}`}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ScatterChart margin={{ top: 6, right: 10, bottom: 4, left: 0 }}>
+            <CartesianGrid stroke="var(--line)" strokeDasharray="2 4" />
+            <XAxis
+              dataKey={x}
+              type="number"
+              domain={domain}
+              ticks={x === "ratio" ? [0, 0.25, 0.5, 0.75, 1] : [0, 0.9, 1.8, 2.7, 3.6]}
+              tick={axis}
+              stroke="var(--line-strong)"
+              unit={unit}
+              tickFormatter={(v: number) => formatNumber(v, 2)}
+            />
+            <YAxis dataKey="degradationPct" type="number" domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={axis} stroke="var(--line-strong)" width={44} unit=" %" />
+            <ZAxis range={[14, 14]} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(v) => formatNumber(Number(v), 3)} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {(["C1", "C2", "C3"] as const).map((c) => (
+              <Scatter key={c} name={c} data={points.filter((p) => p.connector === c)} fill={COLORS[c]} isAnimationActive={false} />
+            ))}
+            {x === "ratio" && <Scatter name="Model" data={line.map((l) => ({ ratio: l.ratio, degradationPct: l.fit }))} line={{ stroke: "var(--ink)", strokeWidth: 1.5 }} shape={() => <g />} isAnimationActive={false} legendType="line" fill="var(--ink)" />}
+          </ScatterChart>
+        </ResponsiveContainer>
+      </div>
+    </figure>
+  );
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {panel("voltageV", "Against raw voltage", " V", [0, 3.6])}
+      {panel("ratio", "Against V ÷ V_ref (relative voltage)", "", [0, 1])}
     </div>
   );
 }

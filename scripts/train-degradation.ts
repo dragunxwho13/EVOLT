@@ -3,8 +3,8 @@
  *
  *   npm run model:degradation
  *
- * Reads the unified training dataset and the Arduino bench log, runs the leakage-aware study
- * and fits the bench calibration with exactly the code the app uses, and writes
+ * Reads the unified training dataset and the Arduino bench log (run 2), runs the leakage-aware
+ * study and fits the relative-voltage bench calibration with exactly the code the app uses, and writes
  * models/degradation-report.json (study + saved calibration model). Deterministic: running it
  * twice gives the same file.
  */
@@ -30,7 +30,7 @@ export function buildReport() {
     version: SCALING_VERSION,
     sources: {
       unified: { file: UNIFIED_FILE, sha256: sha(unifiedText), rows: unified.rows.length },
-      bench: { file: BENCH_RUN.file, sha256: sha(benchText) },
+      bench: { run: BENCH_RUN.id, file: BENCH_RUN.file, sha256: sha(benchText) },
     },
     study,
     calibration,
