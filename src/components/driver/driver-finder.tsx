@@ -565,7 +565,7 @@ function ResultCard({
             "Compare"
           )}
         </label>
-        <span className="flex items-center gap-4">
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <button type="button" onClick={onShowOnMap} className="inline-flex items-center gap-1 text-sm font-medium text-signal underline-offset-4 hover:underline">
             <MapIcon className="h-3.5 w-3.5" aria-hidden />
             Show on map
@@ -573,6 +573,11 @@ function ResultCard({
           <Link href={`/driver/stations/${r.stationId}`} className="text-sm font-medium text-signal underline-offset-4 hover:underline">
             Station details
           </Link>
+          {r.healthStatus !== "inspection_recommended" && r.operationalStatus !== "offline" && (
+            <Link href={`/driver/book/${r.chargerId}`} className="text-sm font-medium text-signal underline-offset-4 hover:underline">
+              Book a slot
+            </Link>
+          )}
         </span>
       </div>
     </li>

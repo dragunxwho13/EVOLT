@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { BOOKING } from "@/config/booking";
 import { CONNECTOR_LABELS } from "@/config/domain";
 import { CopyCoordinates } from "@/components/driver/copy-coordinates";
 import { StationHistoryPanel } from "@/components/sessions/station-history";
@@ -107,6 +108,13 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
                       {c.lastObservationAt ? `health data to ${formatDate(c.lastObservationAt)}` : "no health readings"}
                     </span>
                     {c.activeAlerts > 0 && <span className="text-xs text-watch">{c.activeAlerts} open issue(s) under review</span>}
+                    {c.operationalStatus === "offline" || c.healthStatus === "inspection_recommended" ? (
+                      <span className="mt-1 text-xs text-faint">Not taking bookings</span>
+                    ) : (
+                      <ButtonLink href={`/driver/book/${c.id}`} size="sm" className="mt-1.5">
+                        Book a slot
+                      </ButtonLink>
+                    )}
                   </div>
                 </li>
               ))}
@@ -141,6 +149,14 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
               <p className="text-sm text-muted">No location is recorded for this station, so EVOLT cannot measure how far away it is.</p>
             )}
           </Panel>
+          {chargers.length > 0 && (
+            <Panel title="Book ahead">
+              <p className="mb-3 text-sm text-muted">
+                Reserve a time so you do not wait on arrival, or join the queue for the next opening. A {BOOKING.bufferMinutes}-minute gap is kept between drivers.
+              </p>
+              <ButtonLink href={`/driver/book/fleet?station=${station.id}`}>Book several vehicles</ButtonLink>
+            </Panel>
+          )}
           {chargers.length >= 2 && (
             <Panel title="Compare">
               <ButtonLink href={`/driver/compare?ids=${chargers.slice(0, 4).map((c) => c.id).join(",")}`}>

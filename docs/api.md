@@ -21,6 +21,13 @@ Query strings are validated strictly: unknown parameters return 400.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/api/recommendations` | Ranked chargers with explanations, exclusions, hard constraints and preferences |
+| GET | `/api/bookings/availability` | Free slots on one charger for one day, busy periods and their gaps, and the next queue start |
+| POST | `/api/bookings` | Book a slot (`start` given) or join the queue (no `start`); returns the booking code once |
+| POST | `/api/bookings/fleet` | Plan several vehicles across a station's chargers; `preview: false` books the plan |
+| POST | `/api/bookings/lookup` · `/api/bookings/cancel` | View or cancel by booking code (sent in the body, never the URL) |
+
+Booking writes need no admin token, even in token mode: drivers have no accounts. They accept
+same-site requests only and are fully validated. Details and request bodies → [booking.md](booking.md#api).
 
 Parameters:
 

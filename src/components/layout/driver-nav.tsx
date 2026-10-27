@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils/cn";
 const LINKS = [
   { href: "/driver", label: "Find a charger" },
   { href: "/driver/compare", label: "Compare" },
+  { href: "/driver/bookings", label: "My bookings" },
 ];
 
 export function DriverNavLinks() {
@@ -14,7 +15,10 @@ export function DriverNavLinks() {
   return (
     <nav aria-label="Driver" className="order-last flex w-full gap-1 sm:order-none sm:w-auto">
       {LINKS.map((l) => {
-        const active = l.href === "/driver" ? pathname === "/driver" || pathname.startsWith("/driver/stations") : pathname.startsWith(l.href);
+        const active =
+          l.href === "/driver"
+            ? pathname === "/driver" || pathname.startsWith("/driver/stations") || pathname.startsWith("/driver/book/")
+            : pathname.startsWith(l.href);
         return (
           <Link
             key={l.href}

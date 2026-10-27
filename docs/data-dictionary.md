@@ -137,6 +137,7 @@ connector "Not recorded" and a warning.
 | `sensor_readings` | Optional bench-sensor readings (supporting context only) | unique (`device_id`, `sensor`, `recorded_at`) |
 | `charging_sessions` | Imported sessions with all numeric values and labels | unique (`charger_id`, `started_at`) |
 | `model_runs` | Cross-validated training reports and fitted models per label (and follow-up tests) | — |
+| `bookings` | Driver slot, queue and fleet bookings: `charger_id`, `start_at`, `end_at`, `buffer_minutes` kept free after the session, `kind` (`slot`, `queue`, `fleet`), `status` (`booked`, `cancelled`), driver name and optional vehicle label, and `code_hash` (SHA-256 of the booking code; the code itself is never stored). Vehicles booked together share one code (`group_size`) | FK → chargers (cascade); end after start and ≤ 8 h later; buffer 0–60 min; cancelled ⇔ `cancelled_at` set; overlaps are refused by the service under a per-charger lock |
 | `insight_reviews` | Workflow status (reviewed / resolved / dismissed) and note for company action items | primary key `key` |
 
 Enumerations: `connector_type`, `operational_status`, `health_status`
