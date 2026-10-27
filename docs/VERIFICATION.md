@@ -1,8 +1,8 @@
-# Verification report — Arduino bench, scaling and degradation model
+# Verification report — Arduino bench (run 2), scaling and degradation model
 
 [← Back to README](../README.md)
 
-Run on 26 Oct 2026, Linux sandbox, PostgreSQL 16.15, Node 22.23, Chromium (Playwright).
+Run on 27 Oct 2026, Linux sandbox, PostgreSQL 16, Node 22, Chromium (Playwright).
 
 ## Checks that actually ran
 
@@ -10,47 +10,44 @@ Run on 26 Oct 2026, Linux sandbox, PostgreSQL 16.15, Node 22.23, Chromium (Playw
 |---|---|
 | `npm run lint` | clean |
 | `npm run typecheck` | clean |
-| `npm run test:unit` | **138 / 138 passed** |
-| `npm run test:integration` (real PostgreSQL) | **24 / 24 passed** |
+| `npm run test:unit` | **165 / 165 passed** |
+| `npm run test:integration` (real PostgreSQL) | **37 / 37 passed** |
 | `npm run build` (production) | succeeded |
-| `npm run test:e2e` (desktop + mobile Chromium) | **28 / 28 passed** |
-| Fresh database: migrate → `database/seed/dataset.ts` | 285 bench readings stored, then 1,000 sessions, 57 chargers analysed, 3 model reports |
+| `npm run test:e2e` (desktop + mobile Chromium) | **34 / 34 passed** |
+| Fresh database: migrate → `database/seed/dataset.ts` | 381 bench readings stored (run `bench-run-2` only), then 1,000 sessions, 57 chargers analysed, 3 model reports |
 | `npm run model:degradation` twice | identical `models/degradation-report.json` (also enforced by a unit test) |
-| Unified training file on **Data import** (preview) | before fix: 0 / 1,000 accepted; after: all rows valid (1,000 accepted on an empty database; reported as 1,000 duplicates when the same sessions are already stored) |
+| Independent check with pandas | per-connector load, healthy level V_ref, open-circuit counts, sweep periods, the shared-reference error (1.66 points median) and every model's held-out error match the app's figures |
 
-## The requested pipeline, step by step
+## The pipeline, step by step
 
 | Step | How it was verified |
 |---|---|
-| Arduino data unchanged | CSV checksum matches `database/data/SHA256SUMS`; spot values (C1 at 14 s = 4.21 V, 15.6 mA, 0 %; blanks stay null) in unit tests; every one of the 285 database rows compared with the file in an integration test |
+| Arduino data unchanged | the raw workbook is byte-identical to the file supplied; its CSV conversion and the workbook both match `database/data/SHA256SUMS`; spot values (C1 at 1.2 s = 0 V, 0 mA, 100 %; C2 at 1.2 s = 0.81 V, 2.3 mA, 73.5 %; C3 at 1.2 s = 3.06 V, 8 mA, 4 %; C1 at 64.2 s = 0.64 V, 1.3 mA, 81.4 %) in unit tests; every one of the 381 database rows compared with the file in an integration test |
+| Earlier log removed | its files and checksums deleted; the parser refuses its column names; migration `0007` deletes readings of any other run (integration test inserts one and checks it is removed while run 2 stays) |
 | → database | idempotent loader; a second load is a no-op; changed file refused |
-| → preprocessing | reading states counted per connector (10 no-signal, 1 dropout, 6 healthy, 2 transition, 71 worn, 5 unlogged) |
-| → scaling | k_R = k_V ÷ k_I and k_P = k_V × k_I for every scenario; Ohm's law and I²R hold after scaling; loss share invariant for DC; the report's 113 V example reproduced; scenarios inside IEC 62196-1 ratings |
-| → degradation model | audit identities hold on all 1,000 rows; no station in two folds; definition R² > 0.999, no-loss-no-current R² < 0.05; calibration slope ≈ −25, held-out MAE < 0.2 points; 230 V refused |
-| → connector analysis | three connectors summarised separately; C2's 93 mV healthy-window offset found |
-| → backend | `/api/bench` and `/api/bench/estimate`, including 400s for bad scenario, connector and voltage |
-| → frontend | bench page: three connector columns, scaling table, scenario change through the URL, estimator result and refusal; model page study; no page shows "synthetic" or "simulated" |
+| → preprocessing | per connector: 127 readings, 8 / 9 / 11 near healthy, 32 / 31 / 30 moderate, 59 / 63 / 71 severe, 28 / 24 / 15 open circuit |
+| → connector analysis | loads 493 / 350 / 388 Ω; healthy levels 3.455 / 3.067 / 3.193 V; sweeps every 15 / 20 / 22.5 s; the log's formula reproduced within 0.49 points |
+| → scaling | k_R = k_V ÷ k_I and k_P = k_V × k_I for every scenario; Ohm's law and I²R hold after scaling; loss share equals the chosen level for DC; at 50 % the extra resistance equals the load (115 V lost at 230 V); every level × connector × scenario builds a complete table; scenarios inside IEC 62196-1 ratings |
+| → degradation model | relative-voltage model: held-out sweeps 0.09 points MAE vs 2.28 for one shared voltage line; held-out connectors 0.09–0.12 vs 1.05–4.52; commissioning references within 3 mV of the full run; real-charger voltages and invalid references refused. Unified-dataset audit unchanged: identities hold on all 1,000 rows; no station in two folds |
+| → backend | `/api/bench` (scenario, connector, level) and `/api/bench/estimate` (connector or `referenceV`), including 400s for bad scenario, connector, level, voltage and reference |
+| → frontend | bench page: three connector columns with healthy levels, relative-voltage chart, scaling table, scenario / connector / level change through the URL, estimates per connector and for a new connector, refusal; model page comparison table; no page shows "synthetic" or "simulated" |
 
-## Live deployment (https://evolt-ev.vercel.app, 26 Oct 2026)
+## Live deployment
 
-| Check | Result |
-|---|---|
-| Build log | migrations applied; demo 13 stations / 29 chargers / 1,958 observations; 285 bench readings; dataset loaded; compiled |
-| `/api/health` | `status: ok`, `database: ok`, `writesEnabled: true`, `editMode: token` |
-| Pages | `/`, `/driver` and all 12 company pages returned 200 with data, no error screens |
-| APIs | overview, stations, recommendations, insights, maintenance, bench estimate (2.2 V → 45.0 %) returned correct data |
-| Vercel runtime errors | none since the final deploy |
-| Fixed during this check | unknown query parameters (e.g. share tokens) caused 400s on GET endpoints; `pg` SSL-mode warning |
-| Not checked live | saving with the admin token from a browser; phone geolocation |
+Not yet redeployed with run 2 at the time of writing. On the next deploy, `npm run vercel-build`
+applies migration `0007` (removing the earlier readings from the hosted database) and loads run 2.
+The checks to repeat afterwards: `/api/bench` returns `run.id = "bench-run-2"` and
+`calibrationConsistent: true`; `/api/bench/estimate?voltage=1.7&connector=C1` returns about 50.8 %.
 
 ## Not verified
 
 - **Real-world accuracy of any estimate.** The scaled values follow from documented formulas;
   no commercial charger was measured to check them.
+- **Wear rate.** The run sweeps each connector in a controlled pattern; it does not show how fast
+  real wear builds up.
 - **Temperature.** Not estimated: no calibrated thermal resistance exists for this hardware.
-- **The bench supply voltage.** Not logged; the healthy level stands in for it.
+- **The bench supply voltage.** Not logged; each connector's healthy level stands in for it.
 - **Reference figures** are as published on the cited pages on 26 Oct 2026; the full IEC
   standard text was not consulted.
-- **Hardware re-run.** No new bench run was made; the analysis uses the one supplied log.
 - Windows hardware, physical-device geolocation, token mode in a browser, and manual
   screen-reader or dark-mode review (unchanged from earlier reports).

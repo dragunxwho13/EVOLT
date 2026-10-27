@@ -116,9 +116,9 @@ Router, PostgreSQL with Drizzle, Zod, and the existing analysis, ingestion and l
 
 **Audit findings (before coding)**
 
-- The Arduino bench log (`degradation_data.xlsx`, 95 × 3 connectors) is the only measured
-  data. Its current equals V ÷ 270 Ω and its degradation equals 100 × (1 − V ÷ 4.0 V): one
-  independent signal (voltage).
+- The Arduino bench log is the only measured data. Its current follows V ÷ R_load and its
+  degradation is calculated from voltage: one independent signal. (The log analysed then was
+  replaced by run 2; see 4e.)
 - The new unified training dataset (1,000 rows) is entirely derived from the charging sessions:
   `C1_V` = `voltage_level`, `C1_mA` = 340 × current, `C1_Deg_pct` = clip(100 × loss ÷ consumed),
   C2/C3 = C1 × fixed factors, `connector_type` = "Simulation". It has no independent
@@ -167,6 +167,35 @@ Router, PostgreSQL with Drizzle, Zod, and the existing analysis, ingestion and l
 **Not done, deliberately:** no degradation predictor from the unified dataset (its target is a
 formula of its inputs); no temperature estimate (no calibrated thermal resistance); no field
 wear rate (none verified).
+
+## 4e. Arduino bench run 2 replaces the earlier log (added 27 Oct 2026)
+
+**What changed in the data.** The team's improved bench log (127 time steps × 3 connectors,
+0.5 s step, 1.2–64.2 s, no blank cells) replaces the earlier log everywhere. Each connector now
+has its own load (493 / 350 / 388 Ω) and healthy level (3.455 / 3.067 / 3.193 V), and is swept
+repeatedly between near-healthy and open circuit (every 15 / 20 / 22.5 s).
+
+**Removed:** the earlier raw workbook and CSV, their checksums, and every figure derived from them
+in code, tests, the saved model and the docs. Migration `0007_replace_bench_run.sql` deletes any
+readings of other runs from `bench_readings`, so deployed databases drop them on the next deploy.
+
+**Changed**
+
+- Parser reads the log's own column names (`Connector1_V`, `Connector1_mA`, `Connector1_Deg_%`, …).
+- Analysis measures each connector's V_ref from the log's definition, counts sweeps and their
+  period, and classifies readings as near healthy / moderate / severe / open circuit.
+- Scaling works from each connector's own load and V_ref at a chosen level of the index
+  (10 / 25 / 50 / 75 %, `level` on `/api/bench`).
+- **Model improved:** a relative-voltage model, degradation = 100.11 − 100.23 × (V ÷ V_ref),
+  replaces a single voltage line. Held-out sweeps: 0.09 points MAE against 2.28 for one shared
+  line; held-out connectors with one commissioning sweep: 0.09–0.12 against 1.05–4.52. The
+  estimator accepts a connector or a new connector's healthy level (`referenceV`).
+- Bench page: new findings, the per-connector table, a level selector, and a chart showing the
+  readings against raw and relative voltage. Learned-model page: the model comparison table.
+
+**Not done, deliberately:** no wear rate (the sweeps are a controlled pattern, not wear over
+time); the unified training dataset and its study are unchanged (its Arduino-style columns are
+derived from the sessions, not bench readings).
 
 ## 5. Verification (tests actually run on 25 Oct 2026, Linux sandbox)
 

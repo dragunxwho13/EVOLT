@@ -24,8 +24,9 @@ an alert.
 
 ## The recorded run and its scaling
 
-The three-connector run (`database/data/raw/degradation_data.xlsx`) is stored in the database
-and analysed on the **Arduino bench** page, which scales it to representative chargers
+The three-connector run (run 2, `database/data/raw/arduino-bench-run-2.xlsx`: each connector
+swept repeatedly between near-healthy and open circuit) is stored in the database and analysed
+on the **Arduino bench** page, which scales it to representative chargers
 parameter by parameter. Formulas, assumptions, references and calibration requirements:
 [scaling.md](scaling.md).
 

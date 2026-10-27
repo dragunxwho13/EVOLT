@@ -3,10 +3,10 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ASSUMPTIONS, BENCH_RUN, DEFAULT_SCENARIO, SCENARIOS, SCALING_VERSION } from "@/config/scaling";
 import { BenchEstimator } from "@/components/bench/bench-estimator";
-import { ConnectorTraces, LayerBars, type BarDatum, type TracePoint } from "@/components/bench/bench-charts";
+import { ConnectorTraces, LayerBars, RelativeVoltageScatter, type BarDatum, type CalibrationPoint, type TracePoint } from "@/components/bench/bench-charts";
 import { LAYER_HINTS, LayerTag, type Layer } from "@/components/bench/layer-tag";
 import { EmptyState, ErrorState, PageHeader, Panel, PanelSkeleton, buttonClass, inputClass } from "@/components/ui/primitives";
-import { READING_STATE_LABELS, type ConnectorSummary } from "@/features/bench/analysis";
+import { READING_STATE_LABELS, extraResistanceAtLevel, voltageAtLevel, type ConnectorSummary } from "@/features/bench/analysis";
 import { BENCH_CONNECTORS, type BenchConnector } from "@/features/bench/parse";
 import { benchOverview } from "@/features/bench/service";
 import { load } from "@/lib/http/load";
@@ -22,7 +22,7 @@ export default function BenchPage({ searchParams }: { searchParams: SP }) {
     <>
       <PageHeader
         title="Arduino bench & real-world scaling"
-        description="What our small experimental circuit measured on three connectors, how each quantity is scaled to a representative charger, and how that compares with published charger figures."
+        description="What our small experimental circuit measured on three connectors (run 2), how each quantity is scaled to a representative charger, and how that compares with published charger figures."
       />
       <div className="mb-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
         {(["experimental", "estimate", "reference"] as Layer[]).map((l) => (
@@ -58,7 +58,9 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
   await connection();
   const scenarioId = SCENARIOS.some((s) => s.id === one(sp.scenario)) ? one(sp.scenario)! : DEFAULT_SCENARIO;
   const connector = (BENCH_CONNECTORS as readonly string[]).includes(one(sp.connector) ?? "") ? (one(sp.connector) as BenchConnector) : "C1";
-  const result = await load(() => benchOverview(scenarioId, connector));
+  const levelRaw = Number(one(sp.level));
+  const level = (BENCH_RUN.scalingLevelsPct as readonly number[]).includes(levelRaw) ? levelRaw : BENCH_RUN.defaultScalingLevelPct;
+  const result = await load(() => benchOverview(scenarioId, connector, level));
   if (!result.ok) {
     if (result.notFound) {
       return (
@@ -77,10 +79,16 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
     const at = (c: BenchConnector) => analysis.readings.find((r) => r.timeS === t && r.connector === c)?.voltageV ?? null;
     return { t, C1: at("C1"), C2: at("C2"), C3: at("C3") };
   });
+  const vrefs = calibration.references;
+  const calPoints: CalibrationPoint[] = analysis.readings
+    .filter((r) => r.voltageV > 0 && r.degradationPct !== null && r.degradationPct < 100)
+    .map((r) => ({ connector: r.connector, voltageV: r.voltageV, ratio: r.voltageV / vrefs[r.connector], degradationPct: r.degradationPct! }));
+  const lso = calibration.evaluation.leaveOneSweepOut;
+  const loco = calibration.evaluation.leaveOneConnectorOut;
 
   const physics = scaling.physics;
   const heatBars: BarDatum[] = [
-    { label: `Bench worn state at ${s.kind} scale`, value: scaling.proportional.realHeatW, layer: "estimate" },
+    { label: `Bench at ${level} % at ${s.kind} scale`, value: scaling.proportional.realHeatW, layer: "estimate" },
     ...physics.filter((p) => [1, 5, 20].includes(p.wearMultiple)).map((p) => ({
       label: p.wearMultiple === 1 ? `New contact (${p.resistanceMohm} mΩ, datasheet max)` : `Worn contact × ${p.wearMultiple} (${p.resistanceMohm} mΩ)`,
       value: p.heatTotalW,
@@ -90,25 +98,24 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
   const lossRef = s.kind === "DC" ? { lo: 5, hi: 15, label: "ADAC: DC fast charging (whole chain)" } : { lo: 5.1, hi: 7.0, label: "ADAC: 11 kW wallbox (whole chain)" };
   const shareRow = scaling.rows.find((r) => r.key === "loss_share");
   const lossBars: BarDatum[] = [
-    { label: "Bench worn state (share kept)", value: shareRow?.scaled ?? 0, layer: "estimate" },
+    { label: `Bench at ${level} % (share kept)`, value: shareRow?.scaled ?? 0, layer: "estimate" },
     { label: `${lossRef.label}, upper`, value: lossRef.hi, layer: "reference" },
     { label: `${lossRef.label}, lower`, value: lossRef.lo, layer: "reference" },
     ...physics.filter((p) => [5, 20].includes(p.wearMultiple)).map((p) => ({ label: `Contacts worn × ${p.wearMultiple}`, value: p.shareOfDelivered * 100, layer: "estimate" as Layer })),
   ];
 
-  const connectorRows: { label: string; unit?: string; get: (c: ConnectorSummary) => string }[] = [
-    { label: "Readings (live)", get: (c) => `${c.readings} (${c.live})` },
-    { label: "Healthy voltage (mean of 0 % rows)", get: (c) => `${n(c.healthyMeanV, 3)} V` },
-    { label: "Healthy current", get: (c) => `${n(c.healthyMeanMa, 2)} mA` },
-    { label: "Worn voltage (median of ≥ 30 % rows)", get: (c) => `${n(c.degradedMedianV, 3)} V` },
-    { label: "Lowest live voltage", get: (c) => `${n(c.minLiveV, 2)} V` },
-    { label: "Load resistance (median V ÷ I)", get: (c) => `${n(c.loadOhm, 1)} Ω` },
-    { label: "Extra resistance when worn", get: (c) => `${n(c.extraResistanceOhm, 0)} Ω` },
-    { label: "Voltage share lost when worn", get: (c) => (c.degradedVoltageShare === null ? "—" : formatPercent(c.degradedVoltageShare, 1)) },
+  const connectorRows: { label: string; get: (c: ConnectorSummary) => string }[] = [
+    { label: "Readings (conducting)", get: (c) => `${c.readings} (${c.live})` },
+    { label: "Load resistance (median V ÷ I)", get: (c) => `${n(c.loadOhm, 0)} Ω` },
+    { label: "Healthy level V_ref (0 %)", get: (c) => `${n(c.referenceV, 3)} V` },
+    { label: "Healthy current (V_ref ÷ load)", get: (c) => `${n(c.healthyMa, 2)} mA` },
+    { label: "Highest reading", get: (c) => `${n(c.maxLiveV, 2)} V (${n(c.minDegradationPct, 1)} %)` },
+    { label: `Voltage at ${level} %`, get: (c) => `${n(voltageAtLevel(c, level), 3)} V` },
+    { label: `Extra resistance at ${level} %`, get: (c) => `${n(extraResistanceAtLevel(c, level), 0)} Ω` },
+    { label: "Sweeps to open circuit (period)", get: (c) => `${c.sweeps}${c.sweepPeriodS ? ` (every ${n(c.sweepPeriodS, 1)} s)` : ""}` },
     { label: "Degradation logged: mean / median", get: (c) => `${n(c.degradationMean, 1)} % / ${n(c.degradationMedian, 1)} %` },
-    { label: "Logged readings ≥ 40 %", get: (c) => (c.shareAtLeast40 === null ? "—" : formatPercent(c.shareAtLeast40, 0)) },
-    { label: "First worn reading", get: (c) => (c.firstDegradedAt === null ? "—" : `${c.firstDegradedAt} s`) },
-    ...(["no_signal", "dropout", "unreported", "transition"] as const).map((st) => ({ label: READING_STATE_LABELS[st], get: (c: ConnectorSummary) => String(c.counts[st]) })),
+    { label: "Largest gap to the log's formula", get: (c) => `${n(c.formulaMaxDeviation, 2)} pts` },
+    ...(["healthy", "moderate", "severe", "open_circuit"] as const).map((st) => ({ label: READING_STATE_LABELS[st], get: (c: ConnectorSummary) => String(c.counts[st]) })),
   ];
 
   return (
@@ -137,7 +144,7 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
         description={`${run.description} Each connector is summarised from its own readings; nothing is averaged across connectors.`}
         actions={<LayerTag layer="experimental" />}
       >
-        <ConnectorTraces points={trace} healthyV={analysis.circuit.healthyV} degradedV={analysis.circuit.degradedV} />
+        <ConnectorTraces points={trace} references={vrefs} />
         <div className="mt-5 overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm" aria-label="Per-connector comparison">
             <thead className="border-b border-line text-left text-muted">
@@ -161,13 +168,41 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
           </table>
         </div>
         <p className="mt-3 text-sm text-muted">
-          Across the run the connectors differ by {n(analysis.comparison.meanDegradationGap, 2)} points of degradation on average.
-          {analysis.comparison.healthyOutlier &&
-            ` The one connector-specific difference: ${analysis.comparison.healthyOutlier.connector} reads ${n(analysis.comparison.healthyOutlier.gapV * 1000, 0)} mV (${formatPercent(analysis.comparison.healthyOutlier.gapPct, 1)}) lower in the healthy window.`}
+          The connectors&apos; healthy levels differ by {n(analysis.comparison.referenceSpreadV * 1000, 0)} mV ({formatPercent(analysis.comparison.referenceSpreadPct, 1)}) and
+          their loads by {n(analysis.comparison.loadSpreadOhm, 0)} Ω. Reading them against one shared healthy level would misstate degradation by about{" "}
+          {n(analysis.comparison.pooledReferenceError, 1)} points (median), so each is judged against its own.
         </p>
       </Panel>
 
-      <Panel title="From the bench to a real charger" description="Pick a representative charger and a connector. Every number below is recalculated from the stored readings.">
+      <Panel
+        title="Why the model uses relative voltage"
+        description="The same readings twice. Against raw voltage the three connectors form three different lines; against voltage relative to each connector's healthy level they fall on one."
+        actions={<LayerTag layer="experimental" />}
+      >
+        <RelativeVoltageScatter points={calPoints} model={{ intercept: calibration.intercept, slope: calibration.slope }} />
+        <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+          {[
+            ["One voltage line for all", lso.pooledVoltage.mae, `${n(Math.min(...loco.map((l) => l.pooledVoltage.mae)), 2)}–${n(Math.max(...loco.map((l) => l.pooledVoltage.mae)), 2)}`],
+            ["A line per connector", lso.perConnectorVoltage.mae, "needs full history"],
+            ["Relative voltage (deployed)", lso.relativeVoltage.mae, `${n(Math.min(...loco.map((l) => l.relativeVoltage.mae)), 2)}–${n(Math.max(...loco.map((l) => l.relativeVoltage.mae)), 2)}`],
+          ].map(([k, v, u], i) => (
+            <div key={String(k)} className={cn("rounded-md border px-3 py-2", i === 2 ? "border-signal/50 bg-signal-soft/40" : "border-line")}>
+              <dt className="text-xs text-muted">{k}</dt>
+              <dd className="num text-base font-semibold text-ink">{n(Number(v), 2)} pts</dd>
+              <dd className="text-xs text-faint">error on held-out sweeps · unseen connector: {u}{typeof u === "string" && u.includes("–") ? " pts" : ""}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 text-xs text-faint">
+          Mean absolute error in points of the bench&apos;s degradation index, on data the model never saw. &quot;Unseen connector&quot;: trained on the other two; the relative model gets
+          only that connector&apos;s first sweep to set its healthy level. Open-circuit readings (0 V = 100 % by definition) are left out.
+        </p>
+      </Panel>
+
+      <Panel
+        title="From the bench to a real charger"
+        description="Pick a representative charger, a bench connector and a level of the bench's degradation index. Every number below is recalculated from the stored readings."
+      >
         <form method="get" action="/company/bench" className="mb-4 flex flex-wrap items-end gap-3">
           <div className="flex min-w-64 flex-col gap-1">
             <label htmlFor="scenario" className="text-[0.8125rem] font-medium text-muted">Representative charger (assumption)</label>
@@ -185,13 +220,21 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
               ))}
             </select>
           </div>
+          <div className="flex min-w-32 flex-col gap-1">
+            <label htmlFor="level" className="text-[0.8125rem] font-medium text-muted">Bench degradation level</label>
+            <select id="level" name="level" defaultValue={level} className={inputClass}>
+              {BENCH_RUN.scalingLevelsPct.map((l) => (
+                <option key={l} value={l}>{l} %</option>
+              ))}
+            </select>
+          </div>
           <button type="submit" className={buttonClass("primary")}>Recalculate</button>
         </form>
 
         <dl className="mb-4 grid gap-2 text-sm sm:grid-cols-4">
           {[
-            ["k_V voltage", n(scaling.factors.kV, 1), `${s.pathVoltage} V ÷ bench healthy V`],
-            ["k_I current", n(scaling.factors.kI, 0), `${s.current} A ÷ bench healthy mA`],
+            ["k_V voltage", n(scaling.factors.kV, 1), `${s.pathVoltage} V ÷ ${connector} healthy V_ref`],
+            ["k_I current", n(scaling.factors.kI, 0), `${s.current} A ÷ ${connector} healthy mA`],
             ["k_R resistance", scaling.factors.kR.toExponential(2), "k_V ÷ k_I (Ohm's law)"],
             ["k_P power", n(scaling.factors.kP, 0), "k_V × k_I per path"],
           ].map(([k, v, h]) => (
@@ -236,13 +279,13 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
           </table>
         </div>
         <p className="mt-3 text-xs text-faint">
-          Method A keeps the bench&apos;s resistance ratio. Heat uses I² × R, which does not depend on power factor; delivered AC power uses PF {s.powerFactor}. Comparisons with
+          Method A keeps the bench&apos;s resistance ratio at the chosen level ({level} %: extra resistance = load × {n(1 / (1 - level / 100) - 1, 2)}). Heat uses I² × R, which does not depend on power factor; delivered AC power uses PF {s.powerFactor}. Comparisons with
           ADAC are not like-for-like: ADAC measures the whole charging chain, the bench only the connector.
         </p>
       </Panel>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Heat in the connector" description={`${s.label}. Log scale: the bench's worn state against real contacts at the same current.`}>
+        <Panel title="Heat in the connector" description={`${s.label}. Log scale: the bench at ${level} % against real contacts at the same current.`}>
           <LayerBars data={heatBars} unit="W" label="Heat generated in the connector" />
         </Panel>
         <Panel title="Share of power lost" description="Percent of delivered power. The bench share is dimensionless and carries over unchanged.">
@@ -294,24 +337,25 @@ async function BenchContent({ searchParams }: { searchParams: SP }) {
       </Panel>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Try the bench calibration" description="Turns a bench voltage into the bench's degradation index with the saved, tested calibration model — experimental-scale inputs only.">
-          <BenchEstimator connector={connector} scenario={s.id} scenarioLabel={s.label} />
+        <Panel title="Try the bench model" description="Turns a bench voltage into the bench's degradation index with the saved, tested relative-voltage model — experimental-scale inputs only.">
+          <BenchEstimator connector={connector} scenario={s.id} scenarioLabel={s.label} references={vrefs} />
           <p className="mt-3 text-xs text-faint">
-            Model: {n(calibration.intercept, 2)} {calibration.slope < 0 ? "−" : "+"} {n(Math.abs(calibration.slope), 2)} × V, fitted on {calibration.fittedOn} readings; held-out
-            error {n(calibration.timeBlocked.mae, 2)} points (MAE).{" "}
+            Model: degradation = {n(calibration.intercept, 2)} {calibration.slope < 0 ? "−" : "+"} {n(Math.abs(calibration.slope), 2)} × (V ÷ V_ref), fitted on {calibration.fittedOn}{" "}
+            readings; held-out error {n(lso.relativeVoltage.mae, 2)} points (MAE).{" "}
             {calibrationConsistent ? "Re-fitted from the database on this page load: identical." : "Warning: the stored readings no longer reproduce the saved model — retrain."}
           </p>
         </Panel>
         <Panel title="Assumptions and calibration still needed">
           <ul className="list-disc space-y-1.5 pl-4 text-sm text-muted">
-            <li>Circuit values (healthy {n(analysis.circuit.healthyV, 3)} V, {n(analysis.circuit.healthyMa, 2)} mA, load {n(analysis.circuit.loadOhm, 0)} Ω) are measured from the readings. The supply voltage itself was not logged; the healthy level stands in for it.</li>
-            <li>Degradation % is the log&apos;s own definition, 100 × (1 − V ÷ {BENCH_RUN.degradationReferenceV} V). It is not scaled.</li>
+            <li>Circuit values (each connector&apos;s load and healthy level V_ref) are measured from the readings. The supply voltage itself was not logged; V_ref stands in for it.</li>
+            <li>Degradation % is the log&apos;s own definition, {BENCH_RUN.degradationDefinition}. It is not scaled; a level is only used to pick a bench voltage.</li>
+            <li>The run sweeps each connector repeatedly between near-healthy and open circuit. It is a controlled stress pattern, so it gives no rate of wear over time.</li>
             <li>Charger operating points are representative nominal values ({SCENARIOS.length} scenarios), checked against IEC 62196-1 ratings — not measurements of a specific charger.</li>
             <li>AC power factor {ASSUMPTIONS.powerFactor}; balanced three-phase (neutral ≈ 0 A); session length {ASSUMPTIONS.sessionHours} h for energy.</li>
             <li>Wear multiples ({ASSUMPTIONS.wearMultiples.join(", ")} ×) are illustrative: no verified field rate of contact wear was found.</li>
-            <li>To calibrate: log the supply voltage, add an independent current sensor, measure contact resistance with a four-wire method, and fit a thermal resistance (K/W) with a thermocouple.</li>
+            <li>To calibrate further: log the supply voltage, add an independent current sensor, measure contact resistance with a four-wire method, and fit a thermal resistance (K/W) with a thermocouple.</li>
           </ul>
-          <p className="mt-3 text-xs text-faint">Scaling version {SCALING_VERSION}. Stored from {run.file} (SHA-256 {run.sourceSha256?.slice(0, 12)}…), converted cell for cell from {run.rawFile}.</p>
+          <p className="mt-3 text-xs text-faint">Scaling version {SCALING_VERSION}. Run {run.id}, stored from {run.file} (SHA-256 {run.sourceSha256?.slice(0, 12)}…), converted cell for cell from {run.rawFile}.</p>
         </Panel>
       </div>
 

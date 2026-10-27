@@ -345,27 +345,37 @@ test.describe("data import, analytics and model", () => {
 });
 
 test.describe("Arduino bench and model", () => {
-  test("shows three connectors separately, scales a reading and runs the calibration", async ({ page }) => {
+  test("shows three connectors separately, scales a reading and runs the model", async ({ page }) => {
     await page.goto("/company/bench");
     await expect(page.getByRole("heading", { name: "Arduino bench & real-world scaling" })).toBeVisible();
     const connectors = page.getByRole("table", { name: "Per-connector comparison" });
     for (const c of ["C1", "C2", "C3"]) await expect(connectors.getByRole("columnheader", { name: c })).toBeVisible();
-    await expect(page.getByText(/C2 reads lower than the others in the healthy window/)).toBeVisible();
+    await expect(connectors.getByRole("row", { name: /Healthy level V_ref/ })).toContainText("3.455 V");
+    await expect(page.getByText("Each connector needs its own calibration")).toBeVisible();
     await expect(page.getByRole("img", { name: /Voltage of connectors C1, C2 and C3/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: /against v ÷ v_ref/i })).toBeVisible();
 
     const table = page.getByRole("table", { name: "Scaling comparison" });
-    await expect(table.getByRole("rowheader", { name: "Extra series resistance in the worn connector" })).toBeVisible();
+    await expect(table.getByRole("rowheader", { name: "Extra series resistance at 50 % degradation" })).toBeVisible();
     await expect(table.getByText(/MIDA datasheet/).first()).toBeVisible();
     await page.getByLabel("Representative charger (assumption)").selectOption("ac-22");
     await page.getByLabel("Bench connector").selectOption("C3");
+    await page.getByLabel("Bench degradation level").selectOption("25");
     await page.getByRole("button", { name: "Recalculate" }).click();
-    await expect(page).toHaveURL(/scenario=ac-22&connector=C3/);
-    await expect(page.getByText(/Scaled to AC 22 kW/)).toBeVisible();
+    await expect(page).toHaveURL(/scenario=ac-22&connector=C3&level=25/);
+    await expect(page.getByText(/scaled to AC 22 kW/)).toBeVisible();
+    await expect(table.getByRole("rowheader", { name: "Extra series resistance at 25 % degradation" })).toBeVisible();
 
-    await page.getByLabel(/Bench voltage on C3/).fill("2.2");
+    await page.getByLabel("Connector", { exact: true }).selectOption("C3");
+    await page.getByLabel("Bench voltage (V)").fill("1.6");
     await page.getByRole("button", { name: "Estimate" }).click();
-    await expect(page.getByText(/Bench degradation index: 45/)).toBeVisible();
-    await page.getByLabel(/Bench voltage on C3/).fill("230");
+    await expect(page.getByText(/Bench degradation index: 49\.9 %/)).toBeVisible();
+    await page.getByLabel("Connector", { exact: true }).selectOption("new");
+    await page.getByLabel("Its healthy level (V)").fill("3.3");
+    await page.getByLabel("Bench voltage (V)").fill("1.65");
+    await page.getByRole("button", { name: "Estimate" }).click();
+    await expect(page.getByText(/Bench degradation index: 50/)).toBeVisible();
+    await page.getByLabel("Bench voltage (V)").fill("230");
     await page.getByRole("button", { name: "Estimate" }).click();
     await expect(page.getByText(/230 V is not a bench reading/)).toBeVisible();
   });
@@ -375,6 +385,7 @@ test.describe("Arduino bench and model", () => {
     await expect(page.getByRole("heading", { name: "Can connector degradation be predicted?" })).toBeVisible();
     await expect(page.getByText(/are a formula, not a measurement/)).toBeVisible();
     await expect(page.getByText(/no degradation predictor is deployed from it/)).toBeVisible();
+    await expect(page.getByRole("table", { name: "Bench model comparison" }).getByRole("row", { name: /Relative voltage/ })).toBeVisible();
   });
 });
 

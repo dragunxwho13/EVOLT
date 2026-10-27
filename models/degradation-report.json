@@ -1,5 +1,5 @@
 {
-  "version": "2026.10-1",
+  "version": "2026.10-2",
   "sources": {
     "unified": {
       "file": "database/data/unified-evolt-arduino-training-dataset.csv",
@@ -7,8 +7,9 @@
       "rows": 1000
     },
     "bench": {
-      "file": "database/data/arduino-bench-readings.csv",
-      "sha256": "a819e9e22a528626d6c6e5ac5c2a194cb05f9cd29c85bb3133a92ae2af9629e9"
+      "run": "bench-run-2",
+      "file": "database/data/arduino-bench-run-2.csv",
+      "sha256": "7b27b8eb9bcc4d501e5374bcdaac23d676124c01450693e5e6b292858ccbd980"
     }
   },
   "study": {
@@ -263,53 +264,96 @@
     "deployable": false
   },
   "calibration": {
-    "kind": "bench_linear_calibration",
-    "intercept": 99.9333606545753,
-    "slope": -24.97103586476171,
-    "fittedOn": 219,
-    "inputRangeV": [
-      2.01,
-      3.62
+    "kind": "bench_relative_voltage",
+    "intercept": 100.11325685272843,
+    "slope": -100.2315437022774,
+    "references": {
+      "C1": 3.454545454545455,
+      "C2": 3.0666666666666687,
+      "C3": 3.1932654216185625
+    },
+    "fittedOn": 314,
+    "inputRatioRange": [
+      0.015657953035002215,
+      0.9880434782608689
     ],
     "inputScale": "experimental",
-    "timeBlocked": {
-      "mae": 0.06774489905050347,
-      "rmse": 0.08353785504849999,
-      "r2": 0.999817932753173,
-      "n": 219
+    "evaluation": {
+      "leaveOneSweepOut": {
+        "pooledVoltage": {
+          "mae": 2.2835465409413316,
+          "rmse": 2.960049721046253,
+          "r2": 0.9894421861143938,
+          "n": 314
+        },
+        "perConnectorVoltage": {
+          "mae": 0.090513519964122,
+          "rmse": 0.11081211923797306,
+          "r2": 0.9999852037891663,
+          "n": 314
+        },
+        "relativeVoltage": {
+          "mae": 0.09172204766362482,
+          "rmse": 0.11241502799994049,
+          "r2": 0.9999847726357798,
+          "n": 314
+        }
+      },
+      "leaveOneConnectorOut": [
+        {
+          "connector": "C1",
+          "commissioningReferenceV": 3.4545454545454546,
+          "tested": 75,
+          "pooledVoltage": {
+            "mae": 4.522546711867031,
+            "rmse": 5.272226256247865,
+            "r2": 0.9677351316530856,
+            "n": 75
+          },
+          "relativeVoltage": {
+            "mae": 0.08821104149305986,
+            "rmse": 0.10423899394378629,
+            "r2": 0.9999873874691817,
+            "n": 75
+          }
+        },
+        {
+          "connector": "C2",
+          "commissioningReferenceV": 3.0638297872340425,
+          "tested": 75,
+          "pooledVoltage": {
+            "mae": 3.532634044037449,
+            "rmse": 4.206719600560732,
+            "r2": 0.9781851560463507,
+            "n": 75
+          },
+          "relativeVoltage": {
+            "mae": 0.11990562397491705,
+            "rmse": 0.14655983698915845,
+            "r2": 0.9999735214055929,
+            "n": 75
+          }
+        },
+        {
+          "connector": "C3",
+          "commissioningReferenceV": 3.1951037468278844,
+          "tested": 91,
+          "pooledVoltage": {
+            "mae": 1.0455252512851767,
+            "rmse": 1.3257587408461147,
+            "r2": 0.9978556831825761,
+            "n": 91
+          },
+          "relativeVoltage": {
+            "mae": 0.09290355128789411,
+            "rmse": 0.12312039216480554,
+            "r2": 0.9999815064649947,
+            "n": 91
+          }
+        }
+      ]
     },
-    "leaveOneConnectorOut": [
-      {
-        "connector": "C1",
-        "metrics": {
-          "mae": 0.06960994756810068,
-          "rmse": 0.08468503433487506,
-          "r2": 0.9998157476513118,
-          "n": 73
-        }
-      },
-      {
-        "connector": "C2",
-        "metrics": {
-          "mae": 0.06363311947647977,
-          "rmse": 0.08054282927742729,
-          "r2": 0.999823899083157,
-          "n": 73
-        }
-      },
-      {
-        "connector": "C3",
-        "metrics": {
-          "mae": 0.06145652110931319,
-          "rmse": 0.07870562887788002,
-          "r2": 0.9998420844875543,
-          "n": 73
-        }
-      }
-    ],
-    "formulaIntercept": 100,
-    "formulaSlope": -25,
-    "maxDeviationFromFormula": 0.15000000000000568,
-    "verdict": "Fitted degradation = 99.93 − 24.97 × V, against the log's own definition 100 − 25 × V. On held-out time blocks the error is 0.07 points (MAE). This recovers how the bench computes degradation; it converts a bench voltage into the bench's degradation index and says nothing about how fast a real connector wears."
+    "maxDeviationFromDefinition": 0.4864864864864966,
+    "verdict": "Degradation = 100.11 − 100.23 × (V ÷ V_ref), with V_ref measured per connector (C1 3.455 V, C2 3.067 V, C3 3.193 V). On sweeps it never saw the error is 0.09 points (MAE), against 2.28 for one voltage line shared by all connectors. On a connector it never saw — given only that connector's first sweep — it errs by 0.09–0.12 points, against 1.05–4.52 for the shared line. It converts a bench voltage into the bench's degradation index; it says nothing about how fast a real connector wears."
   }
 }

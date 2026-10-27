@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ASSUMPTIONS, BENCH_RUN, REFERENCE_VALUES, REFERENCES, SCENARIOS } from "@/config/scaling";
-import { analyzeBench } from "@/features/bench/analysis";
+import { analyzeBench, extraResistanceAtLevel, voltageAtLevel } from "@/features/bench/analysis";
 import { benchInsights } from "@/features/bench/insights";
 import { parseBenchCsv } from "@/features/bench/parse";
 import { contactPhysics, deliveredPowerW, proportional, scaleFactors, scalingReport } from "@/features/bench/scaling";
@@ -30,60 +30,86 @@ const sums = Object.fromEntries(
     .map((l) => l.split(/\s+/).reverse()),
 );
 
-describe("raw bench data", () => {
-  it("is the checksummed file, parsed without changing any value", () => {
-    expect(createHash("sha256").update(benchText).digest("hex")).toBe(sums["arduino-bench-readings.csv"]);
-    expect(parsed.rows).toBe(95);
-    expect(parsed.records).toHaveLength(285);
+describe("raw bench data (run 2)", () => {
+  it("is the checksummed file, converted cell for cell from the raw workbook", () => {
+    expect(createHash("sha256").update(benchText).digest("hex")).toBe(sums["arduino-bench-run-2.csv"]);
+    expect(createHash("sha256").update(readFileSync(BENCH_RUN.rawFile)).digest("hex")).toBe(sums["raw/arduino-bench-run-2.xlsx"]);
+    expect(parsed.rows).toBe(127);
+    expect(parsed.records).toHaveLength(381);
     const at = (c: string, t: number) => parsed.records.find((r) => r.connector === c && r.timeS === t)!;
-    expect(at("C1", 14)).toMatchObject({ voltageV: 4.21, currentMa: 15.6, degradationPct: 0 });
-    expect(at("C2", 14)).toMatchObject({ voltageV: 4.13, currentMa: 15.3, degradationPct: 0 });
-    expect(at("C3", 31.5)).toMatchObject({ voltageV: 1.74, currentMa: 6.5, degradationPct: null });
-    expect(at("C1", 0.5)).toMatchObject({ voltageV: 0, currentMa: 0, degradationPct: null });
-    // Blanks stay blank: 10 no-signal + 1 dropout + 5 unreported per connector.
-    expect(parsed.records.filter((r) => r.degradationPct === null)).toHaveLength(48);
+    expect(at("C1", 1.2)).toMatchObject({ voltageV: 0, currentMa: 0, degradationPct: 100 });
+    expect(at("C2", 1.2)).toMatchObject({ voltageV: 0.81, currentMa: 2.3, degradationPct: 73.5 });
+    expect(at("C3", 1.2)).toMatchObject({ voltageV: 3.06, currentMa: 8, degradationPct: 4 });
+    expect(at("C1", 64.2)).toMatchObject({ voltageV: 0.64, currentMa: 1.3, degradationPct: 81.4 });
+    expect(parsed.records.filter((r) => r.degradationPct === null)).toHaveLength(0);
   });
 
   it("refuses malformed logs instead of guessing", () => {
-    expect(() => parseBenchCsv("Time_s,C1_V\n1,2")).toThrow(/missing column/);
-    const head = "Time_s,C1_V,C1_mA,C1_Deg_pct,C2_V,C2_mA,C2_Deg_pct,C3_V,C3_mA,C3_Deg_pct";
+    expect(() => parseBenchCsv("Time_s,Connector1_V\n1,2")).toThrow(/missing column/);
+    const head = "Time_s,Connector1_V,Connector1_mA,Connector1_Deg_%,Connector2_V,Connector2_mA,Connector2_Deg_%,Connector3_V,Connector3_mA,Connector3_Deg_%";
     expect(() => parseBenchCsv(`${head}\n1,1,1,,1,1,,1,1,\n1,1,1,,1,1,,1,1,`)).toThrow(/duplicate/);
     expect(() => parseBenchCsv(`${head}\n1,x,1,,1,1,,1,1,`)).toThrow(/not a number/);
     expect(() => parseBenchCsv(`${head}\n1,,1,,1,1,,1,1,`)).toThrow(/missing/);
+    // The earlier log's column names are not accepted.
+    expect(() => parseBenchCsv("Time_s,C1_V,C1_mA,C1_Deg_pct,C2_V,C2_mA,C2_Deg_pct,C3_V,C3_mA,C3_Deg_pct\n1,1,1,0,1,1,0,1,1,0")).toThrow(/missing column/);
   });
 });
 
 describe("experimental-circuit analysis", () => {
-  it("measures the circuit parameters from the readings", () => {
-    expect(analysis.circuit.loadOhm).toBeCloseTo(270, 0);
-    expect(analysis.circuit.healthyV).toBeCloseTo(4.21, 2);
-    expect(analysis.circuit.healthyMa).toBeCloseTo(15.6, 1);
-    expect(analysis.circuit.degradedV).toBeCloseTo(2.2, 2);
-    expect(analysis.durationS).toBe(47.5);
+  it("covers the run's time span on a 0.5 s step", () => {
+    expect(analysis).toMatchObject({ timeSteps: 127, startS: 1.2, endS: 64.2, stepS: 0.5 });
   });
 
-  it("summarises each connector separately and finds the one real difference", () => {
+  it("measures each connector's own load and healthy level (checked independently with pandas)", () => {
     const [c1, c2, c3] = analysis.connectors;
+    expect(c1!.loadOhm).toBeCloseTo(493, 0);
+    expect(c2!.loadOhm).toBeCloseTo(350, 0);
+    expect(c3!.loadOhm).toBeCloseTo(388.2, 0);
+    expect(c1!.referenceV).toBeCloseTo(3.455, 3);
+    expect(c2!.referenceV).toBeCloseTo(3.067, 3);
+    expect(c3!.referenceV).toBeCloseTo(3.193, 3);
     for (const c of analysis.connectors) {
-      expect(c.counts).toEqual({ no_signal: 10, dropout: 1, healthy: 6, transition: 2, degraded: 71, unreported: 5 });
-      expect(c.formulaMaxDeviation!).toBeLessThanOrEqual(0.15 + 1e-9);
+      expect(c.healthyMa).toBeCloseTo((c.referenceV / c.loadOhm) * 1000, 9);
+      expect(c.formulaMaxDeviation!).toBeLessThan(0.5);
     }
-    expect(c1!.healthyMeanV).not.toBe(c2!.healthyMeanV);
-    expect(analysis.comparison.meanDegradationGap).toBeCloseTo(0.071, 2);
-    expect(analysis.comparison.healthyOutlier).toMatchObject({ connector: "C2" });
-    expect(analysis.comparison.healthyOutlier!.gapV).toBeCloseTo(0.0933, 3);
-    expect(c3!.extraResistanceOhm!).toBeCloseTo(270 * (c3!.healthyMeanV! / c3!.degradedMedianV! - 1), 9);
+  });
+
+  it("finds the repeated sweeps and the open-circuit readings", () => {
+    const [c1, c2, c3] = analysis.connectors;
+    expect([c1!.counts.open_circuit, c2!.counts.open_circuit, c3!.counts.open_circuit]).toEqual([28, 24, 15]);
+    expect([c1!.sweeps, c2!.sweeps, c3!.sweeps]).toEqual([5, 3, 3]);
+    expect([c1!.sweepPeriodS, c2!.sweepPeriodS, c3!.sweepPeriodS]).toEqual([15, 20, 22.5]);
+    for (const c of analysis.connectors) {
+      const total = Object.values(c.counts).reduce((a, b) => a + b, 0);
+      expect(total).toBe(127);
+      expect(c.counts.unreported).toBe(0);
+    }
+  });
+
+  it("shows why one shared healthy level would be wrong", () => {
+    expect(analysis.comparison.lowestReference).toBe("C2");
+    expect(analysis.comparison.highestReference).toBe("C1");
+    expect(analysis.comparison.referenceSpreadV).toBeCloseTo(3.455 - 3.067, 2);
+    expect(analysis.comparison.pooledReferenceError).toBeCloseTo(1.664, 2); // pandas: 1.6636
+  });
+
+  it("maps a degradation level to a bench voltage and an extra resistance", () => {
+    const c1 = analysis.connectors[0]!;
+    expect(voltageAtLevel(c1, 50)).toBeCloseTo(c1.referenceV / 2, 12);
+    expect(extraResistanceAtLevel(c1, 50)).toBeCloseTo(c1.loadOhm, 9);
+    expect(extraResistanceAtLevel(c1, 75)).toBeCloseTo(3 * c1.loadOhm, 9);
   });
 });
 
 describe("real-world scaling", () => {
-  const base = { loadOhm: 270, healthyV: 4.21, healthyMa: 15.6, degradedV: 2.19 };
+  const c1 = analysis.connectors[0]!;
+  const base = { loadOhm: c1.loadOhm, healthyV: c1.referenceV, healthyMa: c1.healthyMa, degradedV: voltageAtLevel(c1, 50) };
 
   it("scales each quantity by its own law", () => {
     for (const s of SCENARIOS) {
       const f = scaleFactors(base, s);
-      expect(f.kV).toBeCloseTo(s.pathVoltage / 4.21, 9);
-      expect(f.kI).toBeCloseTo(s.current / 0.0156, 6);
+      expect(f.kV).toBeCloseTo(s.pathVoltage / c1.referenceV, 9);
+      expect(f.kI).toBeCloseTo(s.current / (c1.healthyMa / 1000), 6);
       expect(f.kR).toBeCloseTo(f.kV / f.kI, 12);
       expect(f.kP).toBeCloseTo(f.kV * f.kI, 6);
     }
@@ -94,12 +120,13 @@ describe("real-world scaling", () => {
       const p = proportional(base, s, base.degradedV);
       expect(p.realVoltageLostV).toBeCloseTo(p.realCurrentA * p.realExtraOhm, 6);
       expect(p.realHeatW).toBeCloseTo(s.paths * p.realCurrentA ** 2 * p.realExtraOhm, 6);
-      expect(p.voltageShareLost).toBeCloseTo(1 - 2.19 / 4.21, 12);
+      expect(p.voltageShareLost).toBeCloseTo(0.5, 12);
       if (s.powerFactor === 1) expect(p.realHeatW / (p.realHeatW + p.realDeliveredW)).toBeCloseTo(p.voltageShareLost, 9);
     }
-    // The report's worked example: about 113 V lost at 235 V.
-    const at235 = proportional(base, { ...SCENARIOS[0]!, pathVoltage: 235, current: 55 }, 2.19);
-    expect(at235.realVoltageLostV).toBeCloseTo(112.8, 0);
+    // At 50 % the connector takes half the path voltage, so its extra resistance equals the load.
+    const ac7 = proportional(base, SCENARIOS[0]!, base.degradedV);
+    expect(ac7.realVoltageLostV).toBeCloseTo(115, 9);
+    expect(ac7.realExtraOhm).toBeCloseTo(ac7.realLoadOhm, 9);
   });
 
   it("uses only operating points inside the IEC 62196-1 ratings", () => {
@@ -130,8 +157,13 @@ describe("real-world scaling", () => {
   it("builds a table whose references all exist and whose temperature is never invented", () => {
     for (const s of SCENARIOS) {
       for (const c of ["C1", "C2", "C3"] as const) {
+        for (const level of BENCH_RUN.scalingLevelsPct) {
+          const r = scalingReport(analysis, s.id, c, level);
+          expect(r.rows).toHaveLength(10);
+          expect(r.rows.find((x) => x.key === "degradation")!.bench).toBe(level);
+          expect(r.proportional.voltageShareLost).toBeCloseTo(level / 100, 9);
+        }
         const r = scalingReport(analysis, s.id, c);
-        expect(r.rows).toHaveLength(10);
         for (const row of r.rows) for (const id of row.referenceIds) expect(REFERENCES[id]).toBeDefined();
         expect(r.rows.find((x) => x.key === "temperature")!.scaled).toBeNull();
         expect(r.rows.find((x) => x.key === "degradation")!.scaled).toBeNull();
@@ -184,17 +216,41 @@ describe("degradation study", () => {
     expect(predictRidge(m, [5])).toBeCloseTo(11, 9);
   });
 
-  it("fits the bench calibration, tests it on held-out data and refuses real-charger voltages", () => {
+  it("fits the relative-voltage model and shows it beats simpler models on unseen data", () => {
     const cal = fitBenchCalibration(parsed.records);
-    expect(cal.slope).toBeCloseTo(-25, 0);
+    expect(cal.kind).toBe("bench_relative_voltage");
     expect(cal.intercept).toBeCloseTo(100, 0);
-    expect(cal.timeBlocked.mae).toBeLessThan(0.2);
-    expect(cal.leaveOneConnectorOut).toHaveLength(3);
-    expect(estimateFromBenchVoltage(cal, 4.2).degradationPct).toBe(0);
-    expect(estimateFromBenchVoltage(cal, 2.2).degradationPct).toBeCloseTo(45, 0);
-    expect(estimateFromBenchVoltage(cal, 0.5).extrapolated).toBe(true);
-    expect(() => estimateFromBenchVoltage(cal, 230)).toThrow(/not a bench reading/);
-    expect(() => estimateFromBenchVoltage(cal, -1)).toThrow(RangeError);
+    expect(cal.slope).toBeCloseTo(-100, 0);
+    expect(cal.fittedOn).toBe(314); // conducting readings below 100 %
+    const lso = cal.evaluation.leaveOneSweepOut;
+    expect(lso.relativeVoltage.mae).toBeLessThan(0.15);
+    expect(lso.pooledVoltage.mae).toBeGreaterThan(2);
+    expect(lso.relativeVoltage.mae).toBeLessThan(lso.pooledVoltage.mae / 10);
+    expect(cal.evaluation.leaveOneConnectorOut).toHaveLength(3);
+    for (const l of cal.evaluation.leaveOneConnectorOut) {
+      expect(l.relativeVoltage.mae).toBeLessThan(0.2);
+      expect(l.relativeVoltage.mae).toBeLessThan(l.pooledVoltage.mae);
+      // Commissioning uses only the first sweep, and lands close to the full-run reference.
+      expect(l.commissioningReferenceV).toBeCloseTo(cal.references[l.connector], 1);
+    }
+  });
+
+  it("estimates per connector, for a new connector, and refuses real-charger voltages", () => {
+    const cal = fitBenchCalibration(parsed.records);
+    const half = estimateFromBenchVoltage(cal, cal.references.C2 / 2, { connector: "C2" });
+    expect(half.degradationPct).toBeCloseTo(50, 0);
+    // The same voltage means different degradation on different connectors.
+    const v = 1.7;
+    const d1 = estimateFromBenchVoltage(cal, v, { connector: "C1" }).degradationPct;
+    const d2 = estimateFromBenchVoltage(cal, v, { connector: "C2" }).degradationPct;
+    expect(d1 - d2).toBeGreaterThan(5);
+    expect(estimateFromBenchVoltage(cal, 3.3, { referenceV: 3.3 })).toMatchObject({ degradationPct: 0, aboveReference: true });
+    expect(estimateFromBenchVoltage(cal, 3.6, { connector: "C1" }).aboveReference).toBe(true);
+    expect(estimateFromBenchVoltage(cal, 0.02, { connector: "C1" }).extrapolated).toBe(true);
+    expect(() => estimateFromBenchVoltage(cal, 230, { connector: "C1" })).toThrow(/not a bench reading/);
+    expect(() => estimateFromBenchVoltage(cal, -1, { connector: "C1" })).toThrow(RangeError);
+    expect(() => estimateFromBenchVoltage(cal, 1, { referenceV: 0 })).toThrow(RangeError);
+    expect(() => estimateFromBenchVoltage(cal, 1, { referenceV: 230 })).toThrow(RangeError);
   });
 
   it("matches the committed model file exactly (reproducible training)", () => {
