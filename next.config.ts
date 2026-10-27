@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
       ["/analytics", "/company/method"],
       ["/data", "/company/data"],
       ["/settings", "/company/settings"],
+      ["/how-it-works", "/company/how-it-works"],
     ];
     return moved.map(([source, destination]) => ({ source, destination, permanent: false }));
   },

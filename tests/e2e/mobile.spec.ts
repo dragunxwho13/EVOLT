@@ -36,8 +36,13 @@ test("booking a slot works on a phone without horizontal scrolling", async ({ pa
 });
 
 test("the How it works page fits a phone without horizontal scrolling", async ({ page }) => {
-  await page.goto("/how-it-works");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  for (const url of ["/driver/how-it-works", "/company/how-it-works"]) {
+    await page.goto(url);
+    await expect(page.getByRole("heading", { level: 1, name: "How it works" })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, url).toBeLessThanOrEqual(1);
+  }
+  await page.goto("/driver/how-it-works");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
