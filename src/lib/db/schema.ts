@@ -355,6 +355,39 @@ export const benchReadings = pgTable(
   ],
 );
 
+export const BOOKING_STATUSES = ["booked", "cancelled"] as const;
+export const BOOKING_KINDS = ["slot", "queue", "fleet"] as const;
+
+/**
+ * Driver slot and queue bookings (see `src/features/booking`). No driver accounts: a booking
+ * is found with its booking code, stored only as a SHA-256 hash. Several vehicles booked
+ * together share one code (`group_size`).
+ */
+export const bookings = pgTable(
+  "bookings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    chargerId: uuid("charger_id")
+      .notNull()
+      .references(() => chargers.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    groupSize: integer("group_size").notNull().default(1),
+    kind: text("kind").$type<(typeof BOOKING_KINDS)[number]>().notNull().default("slot"),
+    driverName: text("driver_name").notNull(),
+    vehicleLabel: text("vehicle_label"),
+    startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+    endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+    bufferMinutes: integer("buffer_minutes").notNull(),
+    status: text("status").$type<(typeof BOOKING_STATUSES)[number]>().notNull().default("booked"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("bookings_charger_time_idx").on(t.chargerId, t.startAt).where(sql`${t.status} = 'booked'`),
+    index("bookings_code_idx").on(t.codeHash),
+  ],
+);
+
 export const stationsRelations = relations(stations, ({ many }) => ({ chargers: many(chargers) }));
 export const chargersRelations = relations(chargers, ({ one, many }) => ({
   station: one(stations, { fields: [chargers.stationId], references: [stations.id] }),

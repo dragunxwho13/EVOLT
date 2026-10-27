@@ -31,7 +31,7 @@ beforeAll(async () => {
   try {
     await migrate(drizzle(pool), { migrationsFolder: "./database/migrations" });
     await drizzle(pool).execute(
-      sql`truncate table bench_readings, insight_reviews, model_runs, charging_sessions, alert_events, alerts, sensor_readings, health_observations, chargers, stations, dataset_imports, vehicle_profiles restart identity cascade`,
+      sql`truncate table bookings, bench_readings, insight_reviews, model_runs, charging_sessions, alert_events, alerts, sensor_readings, health_observations, chargers, stations, dataset_imports, vehicle_profiles restart identity cascade`,
     );
   } finally {
     await pool.end();

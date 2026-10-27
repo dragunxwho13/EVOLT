@@ -13,7 +13,7 @@ first, and why.
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)
 [![CI](https://github.com/dragunxwho13/EVOLT/actions/workflows/ci.yml/badge.svg)](https://github.com/dragunxwho13/EVOLT/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-190%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-231%20passing-2ea44f)
 [![Live demo](https://img.shields.io/badge/live%20demo-evolt--ev.vercel.app-000000?logo=vercel&logoColor=white)](https://evolt-ev.vercel.app)
 ![External APIs](https://img.shields.io/badge/external%20APIs-none-6e7781)
 
@@ -43,6 +43,7 @@ EVOLT turns charging data into two focused experiences built on one database:
 | Compare up to four chargers side by side; click any map pin to see the chargers at that spot | A **fleet map** coloured by connector health; track station performance and export the station table |
 | | A **service forecast**: when each connector will reach its contact-resistance limit, with a range, from temperature-corrected readings |
 | | **Repair checks**: after recorded work, whether readings returned to normal and whether the fix held |
+| **Book a slot or join the queue** before setting off, with a 10-minute gap kept after every booking so a late finish never runs into the next driver; book several vehicles at once; manage bookings with a code, no account | |
 | Read a plain-English reason for every recommendation | Record decisions (reviewed / resolved / dismissed); they are stored in the database |
 
 > **Every number is computed from stored records.** Nothing is hard-coded or shown as live
@@ -149,6 +150,7 @@ Works on the [live demo](https://evolt-ev.vercel.app) or a local copy.
 | 7 | **Service forecast** → open **DEMO-13-C2** | Likely service date with its range and the limit line; readings restated at 20 °C. **DEMO-13-C3** rose only because it was measured hot, and is not flagged |
 | 8 | **Repair checks** | One cleaning held, one relapsed after about a month; record new work on a charger page and set your own service limit |
 | 9 | **Arduino bench** | C1, C2 and C3 side by side; pick a charger to see each quantity scaled (Arduino reading → method → estimate → published reference); type `2.2` in the calibration |
+| 10 | **I'm a driver** → open a demo station → **Book a slot** | Join the queue (next free start, sessions ahead) or pick a time; the day bar shows each booking and its 10-minute gap. Then **My bookings** to view or cancel. **Book several vehicles** plans a fleet across the station's chargers |
 
 ---
 
@@ -343,21 +345,21 @@ Full breakdown and design decisions → [docs/architecture.md](docs/architecture
 </details>
 
 <details>
-<summary><b>Quality and testing</b> — 190 automated tests</summary>
+<summary><b>Quality and testing</b> — 231 automated tests</summary>
 
 <br/>
 
 | Suite | Count | Covers |
 |---|---|---|
-| Unit | 138 | Metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security, temperature correction, forecasts, repair outcomes, bench parsing, scaling laws, contact physics, degradation study and calibration, model reproducibility |
-| Integration | 24 | Real API handlers + PostgreSQL: imports, reviews, CSV export, predictions, access control, service limits, maintenance and repair verification, raw bench storage and the bench APIs |
-| End-to-end | 28 | Both user journeys in Chromium (desktop + mobile), maps and popups, forecasts and repair checks, the Arduino bench page and estimator, regressions, wording checks |
+| Unit | 161 | Slot, queue, buffer and fleet scheduling, charge-time estimates, IST calendar; metrics against pandas/SciPy, map projection and scale, every action-item rule, ranking, training, import, security, temperature correction, forecasts, repair outcomes, bench parsing, scaling laws, contact physics, degradation study and calibration, model reproducibility |
+| Integration | 36 | Real API handlers + PostgreSQL: bookings without an admin token, overlap and buffer refusals, simultaneous requests for one slot, queue order, codes, cancellation, fleet plans; imports, reviews, CSV export, predictions, access control, service limits, maintenance and repair verification, raw bench storage and the bench APIs |
+| End-to-end | 34 | Booking a slot, joining the queue, finding a booking on another device, fleet booking and cancelling (desktop and phone); both user journeys in Chromium (desktop + mobile), maps and popups, forecasts and repair checks, the Arduino bench page and estimator, regressions, wording checks |
 
 ```bash
 npm run lint && npm run typecheck && npm run test:unit
 ```
 
-Last full run: 26 Oct 2026 — lint, type check and production build clean; 138 + 24 + 28 passed.
+Last full run: 27 Oct 2026 — lint, type check and production build clean; 161 unit, 36 integration and 34 end-to-end passed.
 
 **Checked on the live demo (26 Oct 2026):** the health endpoint, all 13 pages, and the
 recommendation, station, action-item, maintenance and bench-estimate APIs return real data;
@@ -397,6 +399,7 @@ What was and was not verified → [docs/testing.md](docs/testing.md) ·
 | [Testing](docs/testing.md) | Test suites, last verified run, what is not verified |
 | [Deployment](docs/deployment.md) | Vercel + Neon PostgreSQL, automatic migrations and data loading, the live setup |
 | [Hardware bench](docs/hardware.md) | Optional Arduino low-voltage demo |
+| [Slot and queue booking](docs/booking.md) | Driver bookings: the gap between drivers, queue, fleet plans, charge-time estimate, booking codes, limits |
 | [Bench scaling](docs/scaling.md) | Arduino → real-world scaling formulas, assumptions, references and calibration needs |
 | [Change report](docs/CHANGE_REPORT.md) | Bugs fixed, features changed, verification |
 | [Verification report](docs/VERIFICATION.md) | What was tested for the bench, scaling and model work, and what was not |
