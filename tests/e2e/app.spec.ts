@@ -325,7 +325,7 @@ test.describe("data import, analytics and model", () => {
   });
 
   test("no page labels data as synthetic or simulated", async ({ page }) => {
-    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings", "/company/forecasts", "/company/maintenance", "/company/bench", "/how-it-works"]) {
+    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings", "/company/forecasts", "/company/maintenance", "/company/bench", "/company/how-it-works", "/driver/how-it-works"]) {
       await page.goto(url);
       await page.waitForLoadState("networkidle");
       expect(await page.locator("body").innerText(), url).not.toMatch(/synthetic|simulated/i);
@@ -390,11 +390,13 @@ test.describe("Arduino bench and model", () => {
 });
 
 test.describe("How it works", () => {
-  test("explains the system from repository evidence and is reachable from both experiences", async ({ page }) => {
+  test("is a section of the company workspace and the driver experience, built from repository evidence", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "See how EVOLT works" }).click();
-    await expect(page).toHaveURL(/\/how-it-works$/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("From a reading to a recommendation");
+    await expect(page).toHaveURL(/\/company\/how-it-works$/);
+    await expect(page.getByRole("heading", { level: 1, name: "How it works" })).toBeVisible();
+    // Inside the workspace: its sidebar is present and marks this section.
+    await expect(page.getByRole("link", { name: "How it works" }).first()).toHaveAttribute("aria-current", "page");
     for (const h of ["System architecture", "End-to-end data flow", "The three connectors, separately", "From the bench to a real charger", "Degradation modelling", "Company workflow", "Driver workflow", "Judge FAQ"]) {
       await expect(page.getByRole("heading", { name: h })).toBeVisible();
     }
@@ -402,7 +404,7 @@ test.describe("How it works", () => {
     await expect(connectors.getByRole("row", { name: /Healthy level V_ref/ })).toContainText("3.455 V");
     await expect(page.getByRole("table", { name: "Bench model comparison" }).getByRole("row", { name: /Relative voltage/ })).toBeVisible();
     // The data-import feature is not described.
-    await expect(page.getByText(/data import/i)).toHaveCount(0);
+    await expect(page.locator("main").getByText(/data import/i)).toHaveCount(0);
     const faq = page.locator("details", { hasText: "Is any of this live data?" });
     await faq.locator("summary").click();
     await expect(faq.getByText(/last recorded status/)).toBeVisible();
@@ -411,10 +413,12 @@ test.describe("How it works", () => {
 
     await page.goto("/driver");
     await page.getByRole("navigation", { name: "Driver" }).getByRole("link", { name: "How it works" }).click();
-    await expect(page).toHaveURL(/\/how-it-works$/);
-    await page.goto("/company");
-    await page.getByRole("link", { name: "How it works" }).first().click();
-    await expect(page).toHaveURL(/\/how-it-works$/);
+    await expect(page).toHaveURL(/\/driver\/how-it-works$/);
+    await expect(page.getByRole("navigation", { name: "Driver" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Driver workflow" })).toBeVisible();
+    // The old standalone address now leads into the workspace section.
+    await page.goto("/how-it-works");
+    await expect(page).toHaveURL(/\/company\/how-it-works$/);
   });
 });
 

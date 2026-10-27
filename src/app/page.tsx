@@ -56,7 +56,7 @@ export default function EntryPage() {
 
       <p className="mt-6 text-sm text-muted">
         Curious how the recommendations are made?{" "}
-        <Link href="/how-it-works" className="font-medium text-signal underline-offset-4 hover:underline">
+        <Link href="/company/how-it-works" className="font-medium text-signal underline-offset-4 hover:underline">
           See how EVOLT works
         </Link>{" "}
         — architecture, data, models, scaling and their limits.

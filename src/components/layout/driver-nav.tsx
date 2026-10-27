@@ -8,7 +8,7 @@ const LINKS = [
   { href: "/driver", label: "Find a charger" },
   { href: "/driver/compare", label: "Compare" },
   { href: "/driver/bookings", label: "My bookings" },
-  { href: "/how-it-works", label: "How it works" },
+  { href: "/driver/how-it-works", label: "How it works" },
 ];
 
 export function DriverNavLinks() {

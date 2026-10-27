@@ -1,15 +1,9 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Wordmark } from "@/components/layout/wordmark";
+import { PageHeader } from "@/components/ui/primitives";
 import { howItWorksFacts } from "@/features/how-it-works/facts";
 import { cn } from "@/lib/utils/cn";
 import { formatNumber } from "@/lib/utils/format";
-
-export const metadata: Metadata = {
-  title: "How it works",
-  description: "How EVOLT turns charging data and Arduino bench readings into evidence-backed recommendations — architecture, data flow, models, scaling, workflows and limits.",
-};
 
 /* ───────────── small building blocks ───────────── */
 
@@ -139,7 +133,8 @@ const TOC = [
 
 /* ───────────── page ───────────── */
 
-export default function HowItWorksPage() {
+/** The "How it works" section, shown inside the company workspace and the driver experience. */
+export function HowItWorksContent() {
   const f = howItWorksFacts();
   const { analysis } = f.bench;
   const p = f.params;
@@ -147,34 +142,12 @@ export default function HowItWorksPage() {
   const range = (v: number[]) => `${n(Math.min(...v))}–${n(Math.max(...v))}`;
 
   return (
-    <div className="min-h-dvh">
-      <header className="sticky top-0 z-40 border-b border-line bg-ground/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 sm:px-6">
-          <Link href="/" aria-label="EVOLT home" className="mr-auto">
-            <Wordmark />
-          </Link>
-          <nav aria-label="Experiences" className="flex gap-1 text-sm">
-            <Link href="/driver" className="rounded-md px-3 py-1.5 text-muted hover:bg-surface hover:text-ink">
-              Driver
-            </Link>
-            <Link href="/company" className="rounded-md px-3 py-1.5 text-muted hover:bg-surface hover:text-ink">
-              Company workspace
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <main id="main" className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-12">
-        <div className="max-w-3xl">
-          <p className="text-sm font-medium text-signal">How it works</p>
-          <h1 className="mt-1 text-[2rem] leading-tight font-semibold tracking-[-0.02em] sm:text-[2.4rem]">From a reading to a recommendation, with the evidence shown.</h1>
-          <p className="mt-3 text-[1.02rem] text-muted">
-            What EVOLT actually does, traced from the code: where each number comes from, how it is checked, and what it cannot tell you. Every figure on this page is read
-            from the repository&apos;s own configuration, bench log and saved model when the site is built.
-          </p>
-        </div>
-
-        <nav aria-label="On this page" className="mt-6 flex flex-wrap gap-1.5">
+    <>
+      <PageHeader
+        title="How it works"
+        description="What EVOLT actually does, traced from the code: where each number comes from, how it is checked, and what it cannot tell you. Every figure here is read from the repository's own configuration and saved model when the site is built."
+      />
+        <nav aria-label="On this page" className="flex flex-wrap gap-1.5">
           {TOC.map(([id, label]) => (
             <a key={id} href={`#${id}`} className="rounded-md border border-line bg-surface px-2.5 py-1 text-sm text-muted hover:border-ink/40 hover:text-ink">
               {label}
@@ -630,11 +603,10 @@ V_ref: C1 ${n(f.model.references.C1, 3)} V · C2 ${n(f.model.references.C2, 3)} 
           </Section>
         </div>
 
-        <footer className="mt-12 border-t border-line pt-6 text-xs text-faint">
+        <p className="mt-12 border-t border-line pt-6 text-xs text-faint">
           Sources in the repository: src/config (analysis, scaling, booking), models/degradation-report.json, database/data, docs/. Health categories describe recorded evidence and are not
           safety certifications.
-        </footer>
-      </main>
-    </div>
+        </p>
+    </>
   );
 }
