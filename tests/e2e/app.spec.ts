@@ -325,7 +325,7 @@ test.describe("data import, analytics and model", () => {
   });
 
   test("no page labels data as synthetic or simulated", async ({ page }) => {
-    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings", "/company/forecasts", "/company/maintenance", "/company/bench"]) {
+    for (const url of ["/", "/driver?lat=13.08&lng=80.27", "/company", "/company/actions", "/company/performance", "/company/chargers", "/company/model", "/company/method", "/company/data", "/company/settings", "/company/forecasts", "/company/maintenance", "/company/bench", "/how-it-works"]) {
       await page.goto(url);
       await page.waitForLoadState("networkidle");
       expect(await page.locator("body").innerText(), url).not.toMatch(/synthetic|simulated/i);
@@ -386,6 +386,35 @@ test.describe("Arduino bench and model", () => {
     await expect(page.getByText(/are a formula, not a measurement/)).toBeVisible();
     await expect(page.getByText(/no degradation predictor is deployed from it/)).toBeVisible();
     await expect(page.getByRole("table", { name: "Bench model comparison" }).getByRole("row", { name: /Relative voltage/ })).toBeVisible();
+  });
+});
+
+test.describe("How it works", () => {
+  test("explains the system from repository evidence and is reachable from both experiences", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: "See how EVOLT works" }).click();
+    await expect(page).toHaveURL(/\/how-it-works$/);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("From a reading to a recommendation");
+    for (const h of ["System architecture", "End-to-end data flow", "The three connectors, separately", "From the bench to a real charger", "Degradation modelling", "Company workflow", "Driver workflow", "Judge FAQ"]) {
+      await expect(page.getByRole("heading", { name: h })).toBeVisible();
+    }
+    const connectors = page.getByRole("table", { name: "Per-connector comparison" });
+    await expect(connectors.getByRole("row", { name: /Healthy level V_ref/ })).toContainText("3.455 V");
+    await expect(page.getByRole("table", { name: "Bench model comparison" }).getByRole("row", { name: /Relative voltage/ })).toBeVisible();
+    // The data-import feature is not described.
+    await expect(page.getByText(/data import/i)).toHaveCount(0);
+    const faq = page.locator("details", { hasText: "Is any of this live data?" });
+    await faq.locator("summary").click();
+    await expect(faq.getByText(/last recorded status/)).toBeVisible();
+    await page.getByRole("navigation", { name: "On this page" }).getByRole("link", { name: "Driver workflow" }).click();
+    await expect(page).toHaveURL(/#driver$/);
+
+    await page.goto("/driver");
+    await page.getByRole("navigation", { name: "Driver" }).getByRole("link", { name: "How it works" }).click();
+    await expect(page).toHaveURL(/\/how-it-works$/);
+    await page.goto("/company");
+    await page.getByRole("link", { name: "How it works" }).first().click();
+    await expect(page).toHaveURL(/\/how-it-works$/);
   });
 });
 
