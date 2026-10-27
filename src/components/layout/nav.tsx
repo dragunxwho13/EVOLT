@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, BarChart3, Cable, CalendarClock, CircuitBoard, Wrench, ChartLine, Database, FlaskConical, Gauge, ListChecks, Map as MapIcon, Menu, Settings, TriangleAlert, X } from "lucide-react";
+import { ArrowLeftRight, BarChart3, BookOpen, Cable, CalendarClock, CircuitBoard, Wrench, ChartLine, Database, FlaskConical, Gauge, ListChecks, Map as MapIcon, Menu, Settings, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ComponentType } from "react";
@@ -39,6 +39,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/company/bench", label: "Arduino bench", icon: CircuitBoard },
       { href: "/company/model", label: "Learned model", icon: FlaskConical },
       { href: "/company/method", label: "Analysis method", icon: ChartLine },
+      { href: "/how-it-works", label: "How it works", icon: BookOpen },
       { href: "/company/data", label: "Data import", icon: Database },
       { href: "/company/settings", label: "Settings", icon: Settings },
     ],

@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { BENCH_RUN, SCALING_VERSION } from "../src/config/scaling";
+import { analyzeBench } from "../src/features/bench/analysis";
 import { parseBenchCsv } from "../src/features/bench/parse";
 import { parseDatasetText } from "../src/features/data-ingestion/parse";
 import { fitBenchCalibration, studyUnifiedDataset } from "../src/features/learning/degradation";
@@ -25,7 +26,11 @@ export function buildReport() {
   const benchText = readFileSync(BENCH_RUN.file, "utf8");
   const unified = parseDatasetText(unifiedText, "csv");
   const study = studyUnifiedDataset(unified.rows, unified.headers);
-  const calibration = fitBenchCalibration(parseBenchCsv(benchText).records);
+  const benchRecords = parseBenchCsv(benchText).records;
+  const calibration = fitBenchCalibration(benchRecords);
+  // Per-connector circuit summary, saved so static pages can show it without reading the log.
+  const { readings: _readings, ...benchSummary } = analyzeBench(benchRecords);
+  void _readings;
   return {
     version: SCALING_VERSION,
     sources: {
@@ -34,6 +39,7 @@ export function buildReport() {
     },
     study,
     calibration,
+    benchSummary: { ...benchSummary, readings: benchRecords.length },
   };
 }
 
